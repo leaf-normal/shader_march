@@ -1,5 +1,3 @@
-#define PI 3.141592653
-#define eps 0.001
 struct CameraInfo {
   float4x4 screen_to_camera;
   float4x4 camera_to_world;
@@ -53,6 +51,7 @@ struct RayPayload {
 #define t_min 0.001
 #define t_max 10000.0
 #define eps 5e-4
+#define PI 3.141592654
 
 void wanghash(inout uint seed)
 {
@@ -150,7 +149,7 @@ float3 SampleGGX_VNDF(float3 ray,float roughness,float2 rd,float3 normal)
 }
 
 
-float3 SampleGGX_Anisotropic(float3 ray,float roughness,float anisotropic,float2 xi,float3 normal,float3 tangent)
+float3 SampleGGX_Anisotropic(float3 ray,float roughness,float anisotropic,float2 rd,float3 normal,float3 tangent)
 {
     // 各向异性采样
   float aspect=sqrt(1.0-0.9*anisotropic);
@@ -173,7 +172,7 @@ float3 SampleGGX_Anisotropic(float3 ray,float roughness,float anisotropic,float2
   return H;
 }
 
-void GetTangentSpace(float3 normal,out float3 tangent,out float3 bitangent)
+void GetTangent(float3 normal,out float3 tangent,out float3 bitangent)
 {
   float3 up=abs(normal.z)<0.999?float3(0.0,0.0,1.0):float3(1.0,0.0,0.0);
   tangent=normalize(cross(up,normal));
@@ -253,14 +252,15 @@ float3 EvalBSDF(Material material,float3 ray,float3 wi,float3 normal,out float p
   {
     float eta=Ndotray>0.0?1.0/material.ior:material.ior;
     float3 H=normalize(ray+wi*eta);
+    float NdotH=dot(normal,H);
+    float Hdotray=dot(H,ray);
+    float Hdotwi=dot(H,wi);
     float D=GTR2(NdotH,alpha);
     float G=SmithG_GGX(Ndotray,material.roughness)*SmithG_GGX(abs(dot(normal,wi)),material.roughness);
     float3 F=SchlickFresnel(F0,dot(H,ray));
     float denom=sqr(Hdotray+eta*Hdotwi);
-    float3 transmission=(material.base_color*(1.0-F)*D*G*abs(dot(wi,H))*abs(dot(ray,H)))/(Ndotray*denom);
+    float3 transmission=(material.base_color*(1.0-F)*D*G*abs(Hdotwi)*abs(Hdotray))/(abs(Ndotray)*abs(Ndotwi)*denom);
     ret+=transmission*material.transparency*material.specular_transmission;
-    transmissionPDF=1.0;
-    float Hdotwi=dot(H,wi);
     float jacobian=(eta*eta*abs(Hdotwi))/denom;
     transmissionPDF=D*NdotH*jacobian;
   }else{
@@ -285,17 +285,16 @@ float3 EvalBSDF(Material material,float3 ray,float3 wi,float3 normal,out float p
     if(abs(material.anisotropic)>eps)//各向异性镜面
     {
       float aspect=sqrt(1.0-0.9*material.anisotropic);
-      float ax=max(0.001,alpha/aspect);
-      float ay=max(0.001,alpha*aspect);
+      float ax=max(eps,alpha/aspect);
+      float ay=max(eps,alpha*aspect);
       float HdotX=dot(H,tangent);
       float HdotY=dot(H,bitangent);
       D=GTR2_Anisotropic(NdotH,HdotX,HdotY,ax,ay);
       float VdotX=dot(ray,tangent);
       float VdotY=dot(ray,bitangent);
-      G=SmithG_GGX_Anisotropic(Ndotray,VdotX,VdotY,ax,ay)*SmithG_GGX_Anisotropic(Ndotwi,VdotX,VdotY,ax,ay);
-      float aspect=sqrt(1.0-0.9 * material.anisotropic);
-      float ax=max(eps,alpha/aspect);
-      float ay=max(eps,alpha*aspect);
+      float LdotX=dot(wi,tangent);
+      float LdotY=dot(wi,bitangent);
+      G=SmithG_GGX_Anisotropic(Ndotray,VdotX,VdotY,ax,ay)*SmithG_GGX_Anisotropic(Ndotwi,LdotX,LdotY,ax,ay);
       specularPDF=GTR2_Anisotropic(NdotH,dot(H,tangent),dot(H,bitangent),ax,ay)*NdotH/(4.0*Hdotray);
     }else{//各向同性
       D=GTR2(NdotH,alpha);
@@ -315,8 +314,8 @@ float3 EvalBSDF(Material material,float3 ray,float3 wi,float3 normal,out float p
       float clearcoat_alpha=material.clearcoat_roughness*material.clearcoat_roughness;
       float D_clearcoat=GTR1(NdotH,clearcoat_alpha);
       float G_clearcoat=SmithG_GGX(Ndotray,material.clearcoat_roughness)*SmithG_GGX(Ndotwi,material.clearcoat_roughness);
-      float3 F_clearcoat=SchlickFresnel(0.04,Hdotray); 
-      float3 clearcoat=(D_clearcoat*G_clearcoat*F_cle arcoat)/(4.0 * Ndotray * Ndotwi);
+      float3 F_clearcoat=SchlickFresnel(float3(0.04,0.04,0.04),Hdotray); 
+      float3 clearcoat=(D_clearcoat*G_clearcoat*F_clearcoat)/(4.0 * Ndotray * Ndotwi);
       ret+=clearcoat*material.clearcoat;
       clearcoatPDF=GTR1(NdotH,clearcoat_alpha)*NdotH/(4.0*Hdotray);
     }
