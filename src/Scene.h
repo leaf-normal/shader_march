@@ -2,6 +2,7 @@
 #include "long_march.h"
 #include "Entity.h"
 #include "Material.h"
+#include "Geometry.h"
 #include <vector>
 #include <memory>
 
@@ -36,7 +37,7 @@ public:
     size_t GetEntityCount() const { return entities_.size(); }
 
     // *add
-    grassland::graphics::Buffer* GetVertexBuffer() const { return global_vertex_buffer_.get(); }
+    grassland::graphics::Buffer* GetVertexInfoBuffer() const { return global_vertex_info_buffer_.get(); }
     grassland::graphics::Buffer* GetIndexBuffer() const { return global_index_buffer_.get(); }
     grassland::graphics::Buffer* GetGeometryDescriptorsBuffer() const { return geometry_descriptors_buffer_.get(); }
 
@@ -50,9 +51,9 @@ private:
     std::unique_ptr<grassland::graphics::Buffer> materials_buffer_;
 
     // *add
-    std::unique_ptr<grassland::graphics::Buffer> global_vertex_buffer_;
-    std::unique_ptr<grassland::graphics::Buffer> global_index_buffer_;
     std::unique_ptr<grassland::graphics::Buffer> geometry_descriptors_buffer_;
+    std::unique_ptr<grassland::graphics::Buffer> global_vertex_info_buffer_; 
+    std::unique_ptr<grassland::graphics::Buffer> global_index_buffer_;
 
     void BuildGeometryBuffers();
 

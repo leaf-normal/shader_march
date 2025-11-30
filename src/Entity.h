@@ -1,6 +1,7 @@
 #pragma once
 #include "long_march.h"
 #include "Material.h"
+#include "Geometry.h"
 
 // Entity represents a mesh instance with a material and transform
 class Entity {
@@ -15,9 +16,9 @@ public:
     bool LoadMesh(const std::string& obj_file_path);
 
     // Getters
-    grassland::graphics::Buffer* GetVertexBuffer() const { return vertex_buffer_.get(); }
-    //grassland::graphics::Buffer* GetNormalBuffer() const { return normal_buffer_.get(); } // *add
+    grassland::graphics::Buffer* GetVertexInfoBuffer() const { return vertex_info_buffer_.get(); } // *add
     grassland::graphics::Buffer* GetIndexBuffer() const { return index_buffer_.get(); }
+
     const Material& GetMaterial() const { return material_; }
     const glm::mat4& GetTransform() const { return transform_; }
     grassland::graphics::AccelerationStructure* GetBLAS() const { return blas_.get(); }
@@ -41,9 +42,9 @@ private:
     Material material_;
     glm::mat4 transform_;
 
-    std::unique_ptr<grassland::graphics::Buffer> vertex_buffer_;
-    //std::unique_ptr<grassland::graphics::Buffer> normal_buffer_; // *add
+    std::unique_ptr<grassland::graphics::Buffer> vertex_info_buffer_; // *add
     std::unique_ptr<grassland::graphics::Buffer> index_buffer_;
+
     std::unique_ptr<grassland::graphics::AccelerationStructure> blas_;
 
     bool mesh_loaded_;

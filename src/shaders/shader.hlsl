@@ -37,9 +37,14 @@ struct GeometryDescriptor {
     uint index_count;
 };
 
+struct VertexInfo {
+    float3 position;
+    float3 normal;    
+};
+
 // *add
 StructuredBuffer<GeometryDescriptor> geometry_descriptors : register(t0, space8);
-StructuredBuffer<float3> vertex_positions : register(t0, space9);
+StructuredBuffer<VertexInfo> vertices : register(t0, space9);
 StructuredBuffer<uint> indices : register(t0, space10);
 
 struct RayPayload {
@@ -78,57 +83,6 @@ float f3_max(float3 u){
 void SampleBSDF(Material material, float3 ray, float3 normal, out float3 wi, out float pdf, inout uint seed){
   // do something
 }
-
-// [shader("raygeneration")] void RayGenMain() {
-//   float2 pixel_center = (float2)DispatchRaysIndex() + float2(0.5, 0.5);
-//   float2 uv = pixel_center / float2(DispatchRaysDimensions().xy);
-//   uv.y = 1.0 - uv.y;
-//   float2 d = uv * 2.0 - 1.0;
-//   float4 origin = mul(camera_info.camera_to_world, float4(0, 0, 0, 1));
-//   float4 target = mul(camera_info.screen_to_camera, float4(d, 1, 1));
-//   float4 direction = mul(camera_info.camera_to_world, float4(target.xyz, 0));
-
-
-//   uint2 pixel_coords = DispatchRaysIndex().xy;
-
-//   int seed = pixel_coords[0] * pixel_coords[1];
-
-//   float3 color = float3(0.0, 0.0, 0.0);
-//   float3 throughout = float3(1.0, 1.0, 1.0);
-
-//   RayDesc ray;
-//   ray.Origin = origin.xyz;
-//   ray.Direction = normalize(direction.xyz);
-//   ray.TMin = t_min;
-//   ray.TMax = t_max;
-
-//   entity_id_output[pixel_coords] =  -1;
-
-
-//   RayPayload payload;
-//   payload.color = float3(0, 0, 0);
-//   payload.hit = false;
-//   payload.instance_id = 0;
-
-//   TraceRay(as, RAY_FLAG_NONE, 0xFF, 0, 1, 0, ray, payload);
-
-  
-//   // Write to immediate output (for camera movement mode)
-//   output[pixel_coords] = float4(payload.color, 1);
-  
-//   // Write entity ID to the ID buffer
-//   // If no hit, write -1; otherwise write the instance ID
-//   entity_id_output[pixel_coords] = payload.hit ? (int)payload.instance_id : -1;
-  
-//   // Accumulate color for progressive rendering (when camera is stationary)
-//   float4 prev_color = accumulated_color[pixel_coords];
-//   int prev_samples = accumulated_samples[pixel_coords];
-  
-//   accumulated_color[pixel_coords] = prev_color + float4(payload.color, 1);
-//   accumulated_samples[pixel_coords] = prev_samples + 1;
-// }
-
-
 
 [shader("raygeneration")] void RayGenMain() {
 
@@ -243,7 +197,7 @@ void SampleBSDF(Material material, float3 ray, float3 normal, out float3 wi, out
 
   uint geometry_descriptors_count, _;
   geometry_descriptors.GetDimensions(geometry_descriptors_count, _);
-  if (instance_id >= geometry_descriptors_count) {
+  if (instance_id >= geometry_descriptors_count) {  // remove this will result in an unexpected error 
       payload.hit = false;
       return;
   }
@@ -264,13 +218,27 @@ void SampleBSDF(Material material, float3 ray, float3 normal, out float3 wi, out
   uint i2 = indices[index_offset + 2];
   
   // 6. 获取顶点位置（用于精确命中点计算）
-  float3 v0 = vertex_positions[geo_desc.vertex_offset + i0];
-  float3 v1 = vertex_positions[geo_desc.vertex_offset + i1];
-  float3 v2 = vertex_positions[geo_desc.vertex_offset + i2];
 
-  float3 object_space_normal = cross(v1 - v0, v2 - v0);
-  float3x3 normal_matrix = (float3x3)transpose(WorldToObject4x3());
-  payload.normal = normalize(mul(normal_matrix, object_space_normal));
+  VertexInfo v0 = vertices[geo_desc.vertex_offset + i0];
+  VertexInfo v1 = vertices[geo_desc.vertex_offset + i1];
+  VertexInfo v2 = vertices[geo_desc.vertex_offset + i2];
+  float3 object_space_normal;
+  
+  if(length(v0.normal) < 1e-6){
+    // normal undefined (set to 0), use surface normal
+    object_space_normal = cross(v1.position - v0.position, v2.position - v0.position); 
+  }
+  else{
+    float w0 = attr.barycentrics.x;
+    float w1 = attr.barycentrics.y;
+
+    object_space_normal = w0 * v1.normal + w1 * v2.normal + (1.0 - w0 - w1) * v0.normal; // Attention to the sequence
+  }
+
+  object_space_normal = normalize(object_space_normal);
+
+  float3x3 normal_matrix = (float3x3)transpose(WorldToObject4x3()); // transpose inverse matrix
+  payload.normal = normalize(mul(normal_matrix , object_space_normal));
 
   if(dot(payload.normal, ray_direction) > 0){
     payload.normal = - payload.normal;

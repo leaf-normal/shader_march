@@ -773,9 +773,9 @@ void Application::RenderEntityPanel() {
             ImGui::Text("Indices: %zu", index_count);
         }
         
-        if (entity->GetVertexBuffer()) {
+        if (entity->GetVertexInfoBuffer()) {
             size_t vertex_size = sizeof(float) * 3; // Assuming pos(3)
-            size_t vertex_count = entity->GetVertexBuffer()->Size() / vertex_size;
+            size_t vertex_count = entity->GetVertexInfoBuffer()->Size() / vertex_size;
             ImGui::Text("Vertices: %zu", vertex_count);
         }
         
@@ -822,7 +822,7 @@ void Application::OnRender() {
     
     // *add
     command_context->CmdBindResources(8, { scene_->GetGeometryDescriptorsBuffer() }, grassland::graphics::BIND_POINT_RAYTRACING);
-    command_context->CmdBindResources(9, { scene_->GetVertexBuffer() }, grassland::graphics::BIND_POINT_RAYTRACING);
+    command_context->CmdBindResources(9, { scene_->GetVertexInfoBuffer() }, grassland::graphics::BIND_POINT_RAYTRACING);
     command_context->CmdBindResources(10, { scene_->GetIndexBuffer() }, grassland::graphics::BIND_POINT_RAYTRACING);
     
     command_context->CmdDispatchRays(window_->GetWidth(), window_->GetHeight(), 1);
