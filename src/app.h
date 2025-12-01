@@ -2,11 +2,19 @@
 #include "long_march.h"
 #include "Scene.h"
 #include "Film.h"
+#include "Light.h"
 #include <memory>
 
 struct CameraObject {
     glm::mat4 screen_to_camera;
     glm::mat4 camera_to_world;
+};
+
+struct RenderSettings {  // Mainly for random seed
+    uint32_t frame_count;
+    uint32_t samples_per_pixel;
+    uint32_t max_depth;
+    uint32_t enable_accumulation;
 };
 
 class Application {
@@ -21,6 +29,7 @@ public:
     void OnRender();
     void UpdateHoveredEntity(); // Update which entity the mouse is hovering over
     void RenderEntityPanel(); // Render entity inspector panel on the right
+    void RenderLightPanel(); 
 
     bool IsAlive() const {
         return alive_;
@@ -59,12 +68,10 @@ private:
 
     void ProcessInput(); // Helper function for keyboard input
 
-
     glm::vec3 camera_pos_;
     glm::vec3 camera_front_;
     glm::vec3 camera_up_;
     float camera_speed_;
-
 
     void OnMouseMove(double xpos, double ypos); // Mouse event handler
     void OnMouseButton(int button, int action, int mods, double xpos, double ypos); // Mouse button event handler
@@ -90,4 +97,10 @@ private:
     
     // Entity selection
     int selected_entity_id_; // -1 if no entity selected
+
+    uint32_t frame_count_;
+    uint32_t samples_per_pixel_;
+    std::unique_ptr<grassland::graphics::Buffer> render_settings_buffer_;
+    
+    std::unique_ptr<LightManager> light_manager_;
 };
