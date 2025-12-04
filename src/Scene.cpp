@@ -204,3 +204,4 @@ void Scene::BuildGeometryBuffers() {
     grassland::LogInfo("Built geometry buffers: {} vertices, {} indices across {} entities",
         all_vertex_infos.size(),  all_indices.size(), entities_.size());
 }
+

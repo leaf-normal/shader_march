@@ -49,3 +49,4 @@ private:
 
     bool mesh_loaded_;
 };
+

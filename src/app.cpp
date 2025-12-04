@@ -191,13 +191,6 @@ void Application::OnInit() {
     selected_entity_id_ = -1;
     mouse_x_ = 0.0;
     mouse_y_ = 0.0;
-
-    // 初始化光源管理器
-    light_manager_ = std::make_unique<LightManager>();
-    light_manager_->Initialize(core_.get());
-    
-    // 添加默认光源
-    light_manager_->CreateDefaultLights();
     
     // 初始化渲染设置
     core_->CreateBuffer(sizeof(RenderSettings), grassland::graphics::BUFFER_TYPE_DYNAMIC, &render_settings_buffer_);
@@ -211,6 +204,13 @@ void Application::OnInit() {
 
     // 创建场景
     scene_ = std::make_unique<Scene>(core_.get());
+
+        // 初始化光源管理器
+    light_manager_ = std::make_unique<LightManager>();
+    light_manager_->Initialize(core_.get(), scene_.get());
+    
+    // 添加默认光源
+    light_manager_->CreateDefaultLights();
 
     // 添加实体
     {
@@ -325,11 +325,11 @@ void Application::OnInit() {
     program_->AddResourceBinding(grassland::graphics::RESOURCE_TYPE_STORAGE_BUFFER, 1);          // space10 - indices    
 
     // 渲染设置
-    program_->AddResourceBinding(grassland::graphics::RESOURCE_TYPE_UNIFORM_BUFFER, 1);          // space 11 - render setting
+    program_->AddResourceBinding(grassland::graphics::RESOURCE_TYPE_UNIFORM_BUFFER, 1);          // space11 - render setting
     
     // 光源数据
-    program_->AddResourceBinding(grassland::graphics::RESOURCE_TYPE_STORAGE_BUFFER, 1);          // space 12 - lights buffer
-    program_->AddResourceBinding(grassland::graphics::RESOURCE_TYPE_UNIFORM_BUFFER, 1);          // space 13 - light count
+    program_->AddResourceBinding(grassland::graphics::RESOURCE_TYPE_STORAGE_BUFFER, 1);          // space12 - lights buffer
+    program_->AddResourceBinding(grassland::graphics::RESOURCE_TYPE_STORAGE_BUFFER, 1);          // space13 - light power weights    
     
     try {
         program_->Finalize();
@@ -777,7 +777,8 @@ void Application::RenderLightPanel() {
         
         if (ImGui::TreeNode((light_label + " - " + type_str).c_str())) {
             // Enabled toggle
-            ImGui::Checkbox("Enabled", &light.enabled);
+            bool enabled = light.enabled;
+            ImGui::Checkbox("Enabled", &enabled);
             
             // Light type selector
             const char* light_types[] = { "Point Light", "Area Light", "Directional Light" };
@@ -857,7 +858,7 @@ void Application::OnRender() {
     
     // Light data
     command_context->CmdBindResources(12, { light_manager_->GetLightsBuffer() }, grassland::graphics::BIND_POINT_RAYTRACING);
-    command_context->CmdBindResources(13, { light_manager_->GetLightCountBuffer() }, grassland::graphics::BIND_POINT_RAYTRACING);
+    command_context->CmdBindResources(13, { light_manager_->GetPowerWeightsBuffer() }, grassland::graphics::BIND_POINT_RAYTRACING);
     
     command_context->CmdDispatchRays(window_->GetWidth(), window_->GetHeight(), 1);
     
