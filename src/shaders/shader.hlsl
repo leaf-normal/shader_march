@@ -515,8 +515,7 @@ void SampleBSDF(Material material, float3 ray, float3 normal, out float3 wi, ino
     H=SampleGGX_VNDF(ray,material.roughness,float2(random(seed),random(seed)),normal);
     wi=refract(-ray,H,eta);
     if(length(wi)<eps)wi=reflect(-ray,H);//全反射
-  }else if(randLobe<1)//清漆
-  {
+  }else{//清漆
     H=SampleGGX_VNDF(ray,material.clearcoat_roughness,float2(random(seed),random(seed)),normal);
     wi=reflect(-ray,H);
   }
@@ -557,12 +556,12 @@ float3 EvalBSDF(Material material,float3 ray,float3 wi,float3 normal,out float p
     float D=GTR2(NdotH,alpha);
     float G=SmithG_GGX(Ndotray,material.roughness)*SmithG_GGX(abs(dot(normal,wi)),material.roughness);
     float3 F0=lerp(0.08*material.specular,material.base_color,material.metallic);
-    float3 F=SchlickFresnel(F0,dot(H,ray));
+    float3 F=SchlickFresnel(F0,Hdotray);
     float denom=sqr(Hdotray+eta*Hdotwi);
-    float3 transmission=(material.base_color*(1.0-F)*D*G*abs(Hdotwi)*abs(Hdotray))/(abs(Ndotray)*abs(Ndotwi)*denom);
+    float3 transmission=(material.base_color*(1.0-F)*D*G*abs(Hdotwi)*abs(Hdotray))/(abs(Ndotray)*abs(Ndotwi)*denom+eps);
     ret+=transmission*material.transparency*material.specular_transmission;
     float jacobian=(eta*eta*abs(Hdotwi))/denom;
-    transmissionPDF=D*NdotH*jacobian;
+    transmissionPDF=D*abs(NdotH)*jacobian;
   }else{
     float3 H=normalize(ray+wi);
     float NdotH=dot(normal,H);
@@ -607,7 +606,14 @@ float3 EvalBSDF(Material material,float3 ray,float3 wi,float3 normal,out float p
       float3 tint=lerp(float3(1.0,1.0,1.0),material.base_color,material.specular_tint);
       spec*=tint;
     }
-    ret+=spec;
+    ret+=spec;//光泽层
+    if(material.sheen>0.0&&material.metallic<1.0)
+    {
+      float3 sheen_color=lerp(float3(1.0,1.0,1.0),material.base_color,material.sheen_tint);
+      float sheen_intensity=material.sheen*(1.0-material.metallic);
+      float3 sheen_F=SchlickFresnel(sheen_color,Hdotray);
+      ret+=sheen_F*sheen_intensity*(1.0-F);
+    }
     //清漆层
     if(material.clearcoat>0.0)
     {
@@ -616,17 +622,10 @@ float3 EvalBSDF(Material material,float3 ray,float3 wi,float3 normal,out float p
       float G_clearcoat=SmithG_GGX(Ndotray,material.clearcoat_roughness)*SmithG_GGX(Ndotwi,material.clearcoat_roughness);
       float3 F_clearcoat=SchlickFresnel(float3(0.04,0.04,0.04),Hdotray); 
       float3 clearcoat=(D_clearcoat*G_clearcoat*F_clearcoat)/(4.0 * Ndotray * Ndotwi);
-      ret+=clearcoat*material.clearcoat;
+      ret=ret*(1.0-F_clearcoat*material.clearcoat)+clearcoat*material.clearcoat;
       clearcoatPDF=GTR1(NdotH,clearcoat_alpha)*NdotH/(4.0*Hdotray);
     }
-    //光泽层
-    if(material.sheen>0.0&&material.metallic<1.0)
-    {
-      float3 sheen_color=lerp(float3(1.0,1.0,1.0),material.base_color,material.sheen_tint);
-      float sheen_intensity=material.sheen*(1.0-material.metallic);
-      float3 sheen_F=SchlickFresnel(sheen_color,Hdotray);
-      ret+=sheen_F*sheen_intensity*(1.0-F);
-    }
+    
     sheenPDF=diffusePDF;
   }
   //lobe权重
