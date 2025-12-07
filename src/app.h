@@ -8,6 +8,13 @@
 struct CameraObject {
     glm::mat4 screen_to_camera;
     glm::mat4 camera_to_world;
+    
+    // 景深参数
+    float focal_distance;     // 焦点距离（世界空间）
+    float aperture_size;      // 光圈直径（控制模糊强度）
+    float focal_length;       // 焦距（控制视角）
+    float lens_radius;        // 透镜半径 = aperture_size/2
+    int enable_depth_of_field;// 是否启用景深效果
 };
 
 struct RenderSettings {  // Mainly for random seed
@@ -103,4 +110,24 @@ private:
     std::unique_ptr<grassland::graphics::Buffer> render_settings_buffer_;
     
     std::unique_ptr<LightManager> light_manager_;
+
+    // Depth field parameter
+    float focal_distance_;     // 焦点距离
+    float aperture_size_;      // 光圈大小
+    float focal_length_;       // 焦距
+    bool depth_of_field_enabled_; // 是否启用景深
+    bool depth_of_field_ui_open_; // 景深设置面板是否打开
+    
+    float temp_focal_distance_;
+    float temp_aperture_size_;
+    float temp_focal_length_;
+    
+    // 应用临时参数到实际参数
+    void ApplyDepthOfFieldParams();
+
+    // mouse_scroll
+    void OnScroll(double xoffset, double yoffset);
+    
+    double wheel_accumulator_;
+    bool wheel_processed_;
 };

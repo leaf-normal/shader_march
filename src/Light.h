@@ -1,7 +1,7 @@
 #pragma once
 #include "long_march.h"
 #include "Scene.h"  // 需要包含Scene，用于添加实体
-#define MUL_INTENS 2
+#define MUL_INTENS 4
 
 struct Light {
     glm::vec3 position;       // 光源位置

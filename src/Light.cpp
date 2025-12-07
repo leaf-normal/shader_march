@@ -229,7 +229,7 @@ void LightManager::CreateDefaultLights() {
     lights_.clear();
     light_entities_.clear();
     
-    // 创建一个可见的面光源作为示例
+    //创建一个可见的面光源作为示例
     Light visible_area_light = Light::CreateAreaLight(
         glm::vec3(0.0f, 3.0f, 0.0f),      // 位置
         glm::vec3(0.0f, -1.0f, 0.0f),     // 法线方向（向下）
@@ -241,26 +241,27 @@ void LightManager::CreateDefaultLights() {
     );
     lights_.push_back(visible_area_light);
     
-    // 创建一个可见的球光源
+    //创建一个可见的球光源
     Light visible_sphere_light = Light::CreateSphereLight(
-        glm::vec3(-2.6f, 1.6f, 0.0f),     // 位置
-        0.2f,                             // 半径
+        glm::vec3(-3.4f, 1.3f, 0.0f),     // 位置
+        0.15f,                             // 半径
         glm::vec3(1.0f, 0.8f, 0.6f),      // 暖黄色
-        4.0f,                             // 强度
+        13.0f,                             // 强度
         true                              // 可见
     );
     lights_.push_back(visible_sphere_light);
     
-    // // 不可见的点光源
-    Light invisible_point = Light::CreatePointLight(
-        glm::vec3(0.0f, -0.7f, 0.0f),      // 位置
-        glm::vec3(0.8f, 0.9f, 1.0f),      // 冷蓝色
-        0.2f,                             // 强度
-        false                             // 不可见
-    );
-    lights_.push_back(invisible_point);
+    // 不可见的点光源
+    // Light invisible_point = Light::CreatePointLight(
+    //     // glm::vec3(1.5f, 2.0f, -3.0f),      // 位置
+    //     glm::vec3(0.0f, 2.7f, 0.7f),      // 位置
+    //     glm::vec3(0.8f, 0.9f, 1.0f),      // 冷蓝色
+    //     1.6f,                             // 强度
+    //     false                             // 不可见
+    // );
+    // lights_.push_back(invisible_point);
     
-    // // 不可见的聚光灯
+    // 不可见的聚光灯
     Light invisible_spot = Light::CreateSpotLight(
         glm::vec3(5.0f, 5.0f, 3.0f),      // 位置
         glm::vec3(-0.5f, -1.0f, -0.5f),    // 方向

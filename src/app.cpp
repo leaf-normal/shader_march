@@ -19,7 +19,21 @@ namespace {
 
 Application::Application(grassland::graphics::BackendAPI api) 
     : frame_count_(0)
-    , samples_per_pixel_(1) {
+    , samples_per_pixel_(1)
+    // 实际景深参数
+    , focal_distance_(5.0f)
+    , aperture_size_(0.1f)
+    , focal_length_(0.035f)
+    // 临时景深参数（初始化为实际值）
+    , temp_focal_distance_(5.0f)
+    , temp_aperture_size_(0.1f)
+    , temp_focal_length_(0.035f)
+    // 状态标志
+    , depth_of_field_enabled_(false)
+    , depth_of_field_ui_open_(false)
+    // 滚轮状态
+    , wheel_accumulator_(0.0)
+    , wheel_processed_(true) {
 
     grassland::graphics::CreateCore(api, grassland::graphics::Core::Settings{}, &core_);
     core_->InitializeLogicalDeviceAutoSelect(true);
@@ -68,30 +82,68 @@ void Application::ProcessInput() {
     ctrl_s_was_pressed = ctrl_s_pressed;
     
     // Only process camera movement if camera is enabled
-    if (!camera_enabled_) {
-        return;
+    if (camera_enabled_) {
+        // Poll key states directly
+        if (glfwGetKey(glfw_window, GLFW_KEY_W) == GLFW_PRESS) {
+            camera_pos_ += camera_speed_ * camera_front_;
+        }
+        if (glfwGetKey(glfw_window, GLFW_KEY_S) == GLFW_PRESS) {
+            camera_pos_ -= camera_speed_ * camera_front_;
+        }
+        if (glfwGetKey(glfw_window, GLFW_KEY_A) == GLFW_PRESS) {
+            camera_pos_ -= glm::normalize(glm::cross(camera_front_, camera_up_)) * camera_speed_;
+        }
+        if (glfwGetKey(glfw_window, GLFW_KEY_D) == GLFW_PRESS) {
+            camera_pos_ += glm::normalize(glm::cross(camera_front_, camera_up_)) * camera_speed_;
+        }
+        if (glfwGetKey(glfw_window, GLFW_KEY_SPACE) == GLFW_PRESS) {
+            camera_pos_ += camera_speed_ * camera_up_;
+        }
+        if (glfwGetKey(glfw_window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS || 
+            glfwGetKey(glfw_window, GLFW_KEY_RIGHT_SHIFT) == GLFW_PRESS) {
+            camera_pos_ -= camera_speed_ * camera_up_;
+        }
     }
 
-    // Poll key states directly
-    if (glfwGetKey(glfw_window, GLFW_KEY_W) == GLFW_PRESS) {
-        camera_pos_ += camera_speed_ * camera_front_;
+    // start of modification 
+    // F键切换景深效果
+    static bool f_was_pressed = false;
+    bool f_pressed = (glfwGetKey(glfw_window, GLFW_KEY_F) == GLFW_PRESS);
+    
+    if (f_pressed && !f_was_pressed && !camera_enabled_) {
+        depth_of_field_enabled_ = !depth_of_field_enabled_;
+        if (depth_of_field_enabled_) {
+            grassland::LogInfo("Depth of Field enabled");
+        } else {
+            grassland::LogInfo("Depth of Field disabled");
+        }
+        film_->Reset();
+        frame_count_ = 0;
     }
-    if (glfwGetKey(glfw_window, GLFW_KEY_S) == GLFW_PRESS) {
-        camera_pos_ -= camera_speed_ * camera_front_;
+    f_was_pressed = f_pressed;
+    
+    if (!wheel_processed_ && abs(wheel_accumulator_) > 0.01) {
+        if (depth_of_field_enabled_ && !camera_enabled_) {
+            float wheel_sensitivity = 0.25f;
+            
+            // 直接更新实际参数（滚轮是实时调整）
+            focal_distance_ += static_cast<float>(wheel_accumulator_) * wheel_sensitivity;
+            focal_distance_ = glm::clamp(focal_distance_, 0.05f, 500.0f);
+            
+            // 同时更新临时参数，保持UI显示一致
+            temp_focal_distance_ = focal_distance_;
+            
+            // 重置累积渲染
+            film_->Reset();
+            frame_count_ = 0;
+        }
+        
+        // 重置滚轮状态
+        wheel_accumulator_ = 0.0;
+        wheel_processed_ = true;
     }
-    if (glfwGetKey(glfw_window, GLFW_KEY_A) == GLFW_PRESS) {
-        camera_pos_ -= glm::normalize(glm::cross(camera_front_, camera_up_)) * camera_speed_;
-    }
-    if (glfwGetKey(glfw_window, GLFW_KEY_D) == GLFW_PRESS) {
-        camera_pos_ += glm::normalize(glm::cross(camera_front_, camera_up_)) * camera_speed_;
-    }
-    if (glfwGetKey(glfw_window, GLFW_KEY_SPACE) == GLFW_PRESS) {
-        camera_pos_ += camera_speed_ * camera_up_;
-    }
-    if (glfwGetKey(glfw_window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS || 
-        glfwGetKey(glfw_window, GLFW_KEY_RIGHT_SHIFT) == GLFW_PRESS) {
-        camera_pos_ -= camera_speed_ * camera_up_;
-    }
+
+    // end of modification
 }
 
 void Application::OnMouseMove(double xpos, double ypos) {
@@ -162,10 +214,60 @@ void Application::OnMouseButton(int button, int action, int mods, double xpos, d
         }
     }
 }
+// start of modification
+void Application::OnScroll(double xoffset, double yoffset) {
+    wheel_accumulator_ += yoffset;
+    wheel_processed_ = false;
+    
+    // grassland::LogInfo("Scroll: x={:.2f}, y={:.2f}, accumulator={:.2f}", 
+    //                   xoffset, yoffset, wheel_accumulator_);
+}
+
+void Application::ApplyDepthOfFieldParams() {
+    // 检查参数是否有效
+    bool valid = true;
+    
+    if (temp_focal_distance_ < 0.05f || temp_focal_distance_ > 500.0f) {
+        grassland::LogWarning("Focus distance must be between 0.05 and 500.0m");
+        valid = false;
+    }
+    
+    if (temp_aperture_size_ < 0.001f || temp_aperture_size_ > 5f) {
+        grassland::LogWarning("Aperture must be between 0.001 and 5m");
+        valid = false;
+    }
+    
+    if (temp_focal_length_ < 0.01f || temp_focal_length_ > 2f) {
+        grassland::LogWarning("Focal length must be between 10 and 2000mm");
+        valid = false;
+    }
+    
+    if (!valid) {
+        return; // 参数无效，不应用
+    }
+    
+    // 应用参数
+    focal_distance_ = temp_focal_distance_;
+    aperture_size_ = temp_aperture_size_;
+    focal_length_ = temp_focal_length_;
+    
+    // 重置累积渲染
+    if (!camera_enabled_) {
+        film_->Reset();
+        frame_count_ = 0;
+    }
+    
+    grassland::LogInfo("Depth of field parameters applied:");
+    grassland::LogInfo("  Focus distance: {:.2f}m", focal_distance_);
+    grassland::LogInfo("  Aperture: {:.3f}m (f/{:.1f})", 
+                       aperture_size_, focal_length_ / aperture_size_);
+    grassland::LogInfo("  Focal length: {:.0f}mm", focal_length_ * 1000.0f);
+}
+// end of modification
 
 void Application::OnInit() {
     alive_ = true;
-    core_->CreateWindowObject(2560, 1440,
+    core_->CreateWindowObject(1920, 1080,
         ((core_->API() == grassland::graphics::BACKEND_API_VULKAN) ? "[Vulkan]" : "[D3D12]") +
         std::string(" Ray Tracing Scene Demo"),
         &window_);
@@ -180,6 +282,11 @@ void Application::OnInit() {
     window_->MouseButtonEvent().RegisterCallback(
         [this](int button, int action, int mods, double xpos, double ypos) {
             this->OnMouseButton(button, action, mods, xpos, ypos);
+        }
+    );
+    window_->ScrollEvent().RegisterCallback(
+        [this](double xoffset, double yoffset) {
+            this->OnScroll(xoffset, yoffset);
         }
     );
 
@@ -216,8 +323,12 @@ void Application::OnInit() {
     {
         auto ground = std::make_shared<Entity>(
             "meshes/cube.obj",
-            Material(glm::vec3(0.8f, 0.8f, 0.8f), 0.8f, 0.0f),
-            glm::scale(glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, -1.0f, 0.0f)), 
+            Material(glm::vec3(0.8f, 0.8f, 0.8f), 0.4f, 0.2f,
+            0xFFFFFFFF, glm::vec3(0, 0, 0), 1, 0.0, -1, 0.0, 0.6
+            // Material(glm::vec3(0.8f, 0.8f, 0.8f), 0.15f, 0.5f,
+            // 0xFFFFFFFF, glm::vec3(0, 0, 0), 1, 0.0, -1, 0.0, 0.9
+        ),
+            glm::scale(glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, -0.8f, 0.0f)), 
                       glm::vec3(10.0f, 0.1f, 10.0f))
         );
         scene_->AddEntity(ground);
@@ -226,7 +337,9 @@ void Application::OnInit() {
     {
         auto red_sphere = std::make_shared<Entity>(
             "meshes/octahedron.obj",
-            Material(glm::vec3(1.0f, 0.2f, 0.2f), 0.0f, 0.0f),
+            Material(glm::vec3(1.0f, 0.2f, 0.2f), 0.25f, 0.0f,
+            0xFFFFFFFF, glm::vec3(0, 0, 0), 1, 0.0, -1, 0.0, 0.7, 0.1, -0.9
+        ),
                 glm::translate(glm::mat4(1.0f), glm::vec3(-2.0f, 0.5f, 0.0f))
         );
         scene_->AddEntity(red_sphere);
@@ -235,7 +348,10 @@ void Application::OnInit() {
     {
         auto green_sphere = std::make_shared<Entity>(
             "meshes/preview_sphere.obj",
-            Material(glm::vec3(0.8f, 0.95f, 0.8f), 0.2f, 0.8f),
+            Material(glm::vec3(0.85f, 0.85f, 0.85f), 0.20f, 0.1f,
+            0xFFFFFFFF, glm::vec3(0, 0, 0), 1, 0.0, -1, 0.0, 0.8, 0.4, 0.5
+                ),
+            // Material(glm::vec3(0.8f, 0.95f, 0.8f), 0.2f, 0.0f),
                 glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.5f, 0.0f))
         );
         scene_->AddEntity(green_sphere);
@@ -244,7 +360,7 @@ void Application::OnInit() {
     {
         auto blue_cube = std::make_shared<Entity>(
             "meshes/cube.obj",
-            Material(glm::vec3(0.2f, 0.2f, 1.0f), 0.5f, 0.0f),
+            Material(glm::vec3(0.2f, 0.2f, 1.0f), 0.6f, 0.2f),
             glm::translate(glm::mat4(1.0f), glm::vec3(2.0f, 0.5f, 0.0f))
         );
         scene_->AddEntity(blue_cube);
@@ -285,6 +401,13 @@ void Application::OnInit() {
         glm::perspective(glm::radians(60.0f), (float)window_->GetWidth() / (float)window_->GetHeight(), 0.1f, 10.0f));
     camera_object.camera_to_world =
         glm::inverse(glm::lookAt(camera_pos_, camera_pos_ + camera_front_, camera_up_));
+
+    camera_object.focal_distance = focal_distance_; // add Depth field parameters
+    camera_object.aperture_size = aperture_size_;
+    camera_object.focal_length = focal_length_;
+    camera_object.lens_radius = aperture_size_ * 0.5f;
+    camera_object.enable_depth_of_field = depth_of_field_enabled_ ? 1 : 0;
+
     camera_object_buffer_->UploadData(&camera_object, sizeof(CameraObject));
 
     core_->CreateImage(window_->GetWidth(), window_->GetHeight(), grassland::graphics::IMAGE_FORMAT_R32G32B32A32_SFLOAT,
@@ -409,15 +532,18 @@ void Application::OnUpdate() {
     }
     if (alive_) {
         ProcessInput();
-
+        
         if (!camera_enabled_) {
             frame_count_++;
             if( (frame_count_ & 7) == 0)
                 grassland::LogInfo("Processing frame {}",frame_count_);
         } else {
             frame_count_ = 0;
+
+            wheel_accumulator_ = 0.0;
+            wheel_processed_ = true;
         }
-    
+
         RenderSettings settings{};
         settings.frame_count = frame_count_;
         settings.samples_per_pixel = samples_per_pixel_;
@@ -442,11 +568,19 @@ void Application::OnUpdate() {
         hover_info.hovered_entity_id = hovered_entity_id_;
         hover_info_buffer_->UploadData(&hover_info, sizeof(HoverInfo));
 
+        
         CameraObject camera_object{};
         camera_object.screen_to_camera = glm::inverse(
             glm::perspective(glm::radians(60.0f), (float)window_->GetWidth() / (float)window_->GetHeight(), 0.1f, 10.0f));
         camera_object.camera_to_world =
             glm::inverse(glm::lookAt(camera_pos_, camera_pos_ + camera_front_, camera_up_));
+        
+        camera_object.focal_distance = focal_distance_;
+        camera_object.aperture_size = aperture_size_;
+        camera_object.focal_length = focal_length_;
+        camera_object.lens_radius = aperture_size_ * 0.5f;
+        camera_object.enable_depth_of_field = (depth_of_field_enabled_ && !camera_enabled_) ? 1 : 0;
+        
         camera_object_buffer_->UploadData(&camera_object, sizeof(CameraObject));
     }
 }
@@ -536,6 +670,148 @@ void Application::RenderInfoOverlay() {
     ImGui::Text("Sensitivity: %.2f", mouse_sensitivity_);
 
     ImGui::Spacing();
+    
+    // start of modification to Gui
+    ImGui::SeparatorText("Depth of Field");
+    
+    if (ImGui::Button(depth_of_field_ui_open_ ? "Hide DOF Settings" : "Show DOF Settings")) {
+        depth_of_field_ui_open_ = !depth_of_field_ui_open_;
+        // 当打开UI时，同步实际参数到临时参数
+        if (depth_of_field_ui_open_) {
+            temp_focal_distance_ = focal_distance_;
+            temp_aperture_size_ = aperture_size_;
+            temp_focal_length_ = focal_length_;
+        }
+    }
+    
+    if (depth_of_field_ui_open_) {
+        ImGui::Indent();
+        
+        // 启用/禁用景深
+        bool dof_enabled = depth_of_field_enabled_;
+        if (ImGui::Checkbox("Enable Depth of Field", &dof_enabled)) {
+            depth_of_field_enabled_ = dof_enabled;
+            if (!camera_enabled_) {
+                film_->Reset();
+                frame_count_ = 0;
+            }
+        }
+        
+        if (depth_of_field_enabled_) {
+            // 显示当前实际参数
+            ImGui::Text("Current Values:");
+            glm::vec3 focus_point = camera_pos_ + camera_front_ * focal_distance_;
+            ImGui::Text("  Focus: %.2fm", focal_distance_);
+            ImGui::Text("  Aperture: %.3fm (f/%.1f)", 
+                       aperture_size_, focal_length_ / aperture_size_);
+            ImGui::Text("  Focal Length: %.0fmm", focal_length_ * 1000.0f);
+            
+            ImGui::Spacing();
+            ImGui::SeparatorText("New Values");
+            
+            // 焦点距离输入框 - 移除ImGuiInputTextFlags_EnterReturnsTrue
+            ImGui::Text("Focus Dis (m):");
+            ImGui::SameLine();
+            ImGui::PushItemWidth(120.0f);
+            // 只更新临时变量，不触发任何操作
+            ImGui::InputFloat("##temp_focal_distance", &temp_focal_distance_, 0.0f, 0.0f, "%.2f");
+            ImGui::PopItemWidth();
+            
+            // 显示范围提示
+            ImGui::SameLine();
+            ImGui::TextDisabled("[0.05, 500.0]");
+            
+            // 光圈大小输入框
+            ImGui::Text("Aperture Size (m):");
+            ImGui::SameLine();
+            ImGui::PushItemWidth(120.0f);
+            ImGui::InputFloat("##temp_aperture_size", &temp_aperture_size_, 0.0f, 0.0f, "%.3f");
+            ImGui::PopItemWidth();
+            ImGui::SameLine();
+            float temp_f_stop = focal_length_ / aperture_size_;
+            ImGui::TextDisabled("(f/%.1f)", temp_f_stop);
+            
+            // 焦距输入框
+            ImGui::Text("Focal Length (mm):");
+            ImGui::SameLine();
+            ImGui::PushItemWidth(120.0f);
+            float temp_focal_length_mm = temp_focal_length_ * 1000.0f;
+            if (ImGui::InputFloat("##temp_focal_length", &temp_focal_length_mm, 0.0f, 0.0f, "%.0f")) {
+                temp_focal_length_ = temp_focal_length_mm / 1000.0f;
+            }
+            ImGui::PopItemWidth();
+            
+            // 显示视角信息
+            float sensor_width = 0.036f;
+            float fov = 2.0f * atan(sensor_width / (2.0f * temp_focal_length_));
+            ImGui::SameLine();
+            ImGui::TextDisabled("%.1f°", glm::degrees(fov));
+            
+            // 参数验证
+            bool params_valid = true;
+            std::string error_msg;
+            
+            if (temp_focal_distance_ < 0.05f || temp_focal_distance_ > 500.0f) {
+                params_valid = false;
+                error_msg = "Focus distance must be between 0.05 and 500.0m";
+            } else if (temp_aperture_size_ < 0.001f || temp_aperture_size_ > 5f) {
+                params_valid = false;
+                error_msg = "Aperture must be between 0.001 and 5m";
+            } else if (temp_focal_length_ < 0.01f || temp_focal_length_ > 2f) {
+                params_valid = false;
+                error_msg = "Focal length must be between 10 and 2000mm";
+            }
+            
+            // 显示错误信息
+            if (!params_valid) {
+                ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.0f, 1.0f), "%s", error_msg.c_str());
+            }
+            
+            // Set按钮
+            ImGui::Spacing();
+            ImGui::BeginGroup();
+            
+            // 禁用无效参数的Set按钮
+            ImGui::BeginDisabled(!params_valid);
+            
+            if (ImGui::Button("Set", ImVec2(80, 30))) {
+                ApplyDepthOfFieldParams();
+            }
+            
+            ImGui::EndDisabled();
+            
+            ImGui::SameLine();
+            
+            // Reset按钮 - 重置为当前实际值
+            if (ImGui::Button("Reset", ImVec2(80, 30))) {
+                temp_focal_distance_ = focal_distance_;
+                temp_aperture_size_ = aperture_size_;
+                temp_focal_length_ = focal_length_;
+            }
+            
+            ImGui::SameLine();
+            
+            // Default按钮
+            if (ImGui::Button("Default", ImVec2(80, 30))) {
+                temp_focal_distance_ = 5.0f;
+                temp_aperture_size_ = 0.1f;
+                temp_focal_length_ = 0.035f;
+            }
+            
+            ImGui::EndGroup();
+            
+            // 滚轮控制提示
+            ImGui::Spacing();
+            ImGui::SeparatorText("Controls");
+            ImGui::TextColored(ImVec4(0.8f, 0.8f, 0.2f, 1.0f), "Mouse Wheel: Adjust focus distance in real-time");
+            ImGui::TextColored(ImVec4(0.5f, 1.0f, 0.5f, 1.0f), "F Key: Toggle Depth of Field");
+            ImGui::Text("Input boxes require 'Set' button to apply changes");
+        }
+        
+        ImGui::Unindent();
+    }
+
+    // end of modification
 
     ImGui::SeparatorText("Scene");
     size_t entity_count = scene_->GetEntityCount();

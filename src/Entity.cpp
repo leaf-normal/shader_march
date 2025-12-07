@@ -1,6 +1,7 @@
 #include "Entity.h"
 #include "Geometry.h"
 
+#define ENABLE_NORMAL_INTERPOLATION 1
 #define CALCULATE_MISSING_NORMALS 0
 
 Entity::Entity(const std::string& obj_file_path, 
@@ -50,13 +51,13 @@ void Entity::BuildBLAS(grassland::graphics::Core* core) {
     const glm::vec3* positions = reinterpret_cast<const glm::vec3*>(mesh_.Positions());
     const glm::vec3* normals = reinterpret_cast<const glm::vec3*>(mesh_.Normals());
 
-    if (normals) {
+    if (ENABLE_NORMAL_INTERPOLATION && normals) {
         grassland::LogInfo("Use provided normals in the mesh.");
         for (size_t i = 0; i < mesh_.NumVertices(); ++i) {
             vertex_infos.emplace_back(positions[i], normals[i]);
         }
     } 
-    else if(CALCULATE_MISSING_NORMALS){
+    else if(ENABLE_NORMAL_INTERPOLATION && CALCULATE_MISSING_NORMALS){
         grassland::LogInfo("Mesh has no normals. Calculating average normals...");
 
         std::vector<glm::vec3> accumulated_normals(mesh_.NumVertices(), glm::vec3(0.0f));
