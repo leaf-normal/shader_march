@@ -532,9 +532,9 @@ float3 EvalBSDF(inout Material mat, inout float3 ray, inout float3 wi, inout flo
         F=SchlickFresnel(F0,Hdotray);
     }
     float denom=sqr(Hdotray+eta*Hdotwi);
-    float3 transmission=(mat.base_color*(1.0-F)*D*G*abs(Hdotwi)*abs(Hdotray))/(abs(Ndotray)*abs(Ndotwi)*denom);
+    float3 transmission=(mat.base_color*(1.0-F)*D*G*abs(Hdotwi)*abs(Hdotray))/(abs(Ndotray)*abs(Ndotwi)*denom+EPS);
     ret+=transmission*mat.transparency;
-    float jacobian=(eta*eta*abs(Hdotwi))/denom;
+    float jacobian=(eta*eta*abs(Hdotwi))/(denom+EPS);
     transmissionPDF=D*NdotH*jacobian;
   }else{
     float3 H=normalize(ray+wi);
