@@ -523,7 +523,14 @@ float3 EvalBSDF(inout Material mat, inout float3 ray, inout float3 wi, inout flo
     float Hdotwi=dot(H,wi);
     float D=GTR2(NdotH,alpha);
     float G=SmithG_GGX(Ndotray,mat.roughness)*SmithG_GGX(abs(dot(normal,wi)),mat.roughness);
-    float3 F=SchlickFresnel(F0,dot(H,ray));
+    float3 F;
+    if(mat.metallic<EPS)
+    {
+        float F0_ior=sqr((mat.ior-1.0)/(mat.ior+1.0));
+        F=SchlickFresnelScalar(F0_ior,Hdotray);
+    }else{
+        F=SchlickFresnel(F0,Hdotray);
+    }
     float denom=sqr(Hdotray+eta*Hdotwi);
     float3 transmission=(mat.base_color*(1.0-F)*D*G*abs(Hdotwi)*abs(Hdotray))/(abs(Ndotray)*abs(Ndotwi)*denom);
     ret+=transmission*mat.transparency;
