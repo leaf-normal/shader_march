@@ -27,7 +27,6 @@ struct Material {
   float sheen_tint;    //光泽层染色
   float clearcoat;     //清漆层强度
   float clearcoat_roughness; //清漆层粗糙度
-  float specular_transmission; //镜面透射
 };
 
 struct HoverInfo {
@@ -451,14 +450,14 @@ void SampleBSDF(inout Material mat, inout float3 ray, inout float3 normal, out f
   float diffuseweight=(1.0-mat.metallic)*(1.0-mat.transparency);//漫反射
   float F0_scalar = dot(F0, float3(0.299, 0.587, 0.114));
   float specularweight=SchlickFresnelScalar(F0_scalar,dot(ray,normal))*(1.0-mat.transparency);
-  // float transmissionweight=mat.transparency*mat.specular_transmission;//透射
-  // float clearcoatweight=0.25*mat.clearcoat;//清漆层
+  float transmissionweight=mat.transparency*(1.0-mat.metallic);//透射
+  // float clearcoatweight=0.25*mat.clearcoat*(1.0-transparency);//清漆层
   // float sheenweight=mat.sheen*(1.0-mat.metallic);//光泽层
   //normalization
-  float total=diffuseweight+specularweight;//+transmissionweight+clearcoatweight+sheenweight;
+  float total=diffuseweight+specularweight+transmissionweight;//+clearcoatweight+sheenweight;
   diffuseweight/=total;
   specularweight/=total;
-  // transmissionweight/=total;
+  transmissionweight/=total;
   // clearcoatweight/=total;
   // sheenweight/=total;
   
@@ -468,21 +467,21 @@ void SampleBSDF(inout Material mat, inout float3 ray, inout float3 normal, out f
   if(randLobe<diffuseweight)//漫反射+简化光泽层模型
   {
     wi=SampleHemisphereCos(random2(seed),normal);
-  }else//镜面反射
+  }else if(randLobe<diffuseweight+specularweight)//镜面反射
   {
     if(abs(mat.anisotropic)>0.001)
       H=SampleGGX_Anisotropic(ray,mat.roughness,mat.anisotropic,random2(seed),normal,tangent);
     else
       H=SampleGGX_VNDF(ray,mat.roughness,random2(seed),normal);
     wi=reflect(-ray,H);
+  }else if(randLobe<diffuseweight+specularweight+transmissionweight)//透射
+  {
+    float eta=dot(ray,normal)>0.0?1.0/mat.ior:mat.ior;
+    H=SampleGGX_VNDF(ray,mat.roughness,random2(seed),normal);
+    wi=refract(-ray,H,eta);
+    if(length(wi)<eps)wi=reflect(-ray,H);//全反射
   }
-  // else if(randLobe<diffuseweight+sheenweight+specularweight+transmissionweight)//透射
-  // {
-  //   float eta=dot(ray,normal)>0.0?1.0/mat.ior:mat.ior;
-  //   H=SampleGGX_VNDF(ray,mat.roughness,random2(seed),normal);
-  //   wi=refract(-ray,H,eta);
-  //   if(length(wi)<eps)wi=reflect(-ray,H);//全反射
-  // }else{//清漆
+  //   else{//清漆
   //   H=SampleGGX_VNDF(ray,mat.clearcoat_roughness,random2(seed),normal);
   //   wi=reflect(-ray,H);
   // }
@@ -498,43 +497,44 @@ float3 EvalBSDF(inout Material mat, inout float3 ray, inout float3 wi, inout flo
   GetTangent(normal,tangent,bitangent);
   float Ndotray=dot(normal,ray);
   float Ndotwi=dot(normal,wi);
-//  bool is_trans=Ndotray*Ndotwi<0.0;
+  bool is_trans=Ndotray*Ndotwi<0.0;
   if(Ndotray<=0.0)
   {
     pdf=0.0;
     return float3(0.0,0.0,0.0);
   }
-  // if(!is_trans&&Ndotwi<=0.0)
-  // {
-  //   pdf=0.0;
-  //   return float3(0.0,0.0,0.0);
-  // }
+  if(!is_trans&&Ndotwi<=0.0)
+  {
+    pdf=0.0;
+    return float3(0.0,0.0,0.0);
+  }
   float alpha=sqr(mat.roughness);
-  //float transmissionPDF=0.0;
+  float transmissionPDF=0.0;
   float specularPDF=0.0;
   float diffusePDF=0.0;
   // float sheenPDF=0.0;
   // float clearcoatPDF=0.0;
-  // if(is_trans)//透射
-  // {
-  //   float eta=Ndotray>0.0?1.0/mat.ior:mat.ior;
-  //   float3 H=normalize(ray+wi*eta);
-  //   float NdotH=dot(normal,H);
-  //   float Hdotray=dot(H,ray);
-  //   float Hdotwi=dot(H,wi);
-  //   float D=GTR2(NdotH,alpha);
-  //   float G=SmithG_GGX(Ndotray,mat.roughness)*SmithG_GGX(abs(dot(normal,wi)),mat.roughness);
-  //   float3 F=SchlickFresnel(F0,dot(H,ray));
-  //   float denom=sqr(Hdotray+eta*Hdotwi);
-  //   float3 transmission=(mat.base_color*(1.0-F)*D*G*abs(Hdotwi)*abs(Hdotray))/(abs(Ndotray)*abs(Ndotwi)*denom);
-  //   ret+=transmission*mat.transparency*mat.specular_transmission;
-  //   float jacobian=(eta*eta*abs(Hdotwi))/denom;
-  //   transmissionPDF=D*NdotH*jacobian;
-  // }else{
+  if(is_trans)//透射
+  {
+    float eta=Ndotray>0.0?1.0/mat.ior:mat.ior;
+    float3 H=normalize(ray+wi*eta);
+    float NdotH=dot(normal,H);
+    float Hdotray=dot(H,ray);
+    float Hdotwi=dot(H,wi);
+    float D=GTR2(NdotH,alpha);
+    float G=SmithG_GGX(Ndotray,mat.roughness)*SmithG_GGX(abs(dot(normal,wi)),mat.roughness);
+    float3 F=SchlickFresnel(F0,dot(H,ray));
+    float denom=sqr(Hdotray+eta*Hdotwi);
+    float3 transmission=(mat.base_color*(1.0-F)*D*G*abs(Hdotwi)*abs(Hdotray))/(abs(Ndotray)*abs(Ndotwi)*denom);
+    ret+=transmission*mat.transparency;
+    float jacobian=(eta*eta*abs(Hdotwi))/denom;
+    transmissionPDF=D*NdotH*jacobian;
+  }else{
     float3 H=normalize(ray+wi);
     float NdotH=dot(normal,H);
     float Hdotray=dot(H,ray);
     float3 F=SchlickFresnel(F0,Hdotray);
+
     //漫反射
     if(mat.metallic<1.0&&mat.transparency<1.0)
     {
@@ -546,27 +546,21 @@ float3 EvalBSDF(inout Material mat, inout float3 ray, inout float3 wi, inout flo
       ret+=diffuse*(1.0-F);
     }
     diffusePDF=max(Ndotwi,0.0)/PI;
+
     //镜面反射
     float D,G;
-    // if(abs(mat.anisotropic)>eps)//各向异性镜面
-    // {
-      float aspect=max(EPS, sqrt(1.0-0.9*mat.anisotropic));
-      float ax=max(EPS,alpha/aspect);
-      float ay=max(EPS,alpha*aspect);
-      float HdotX=dot(H,tangent);
-      float HdotY=dot(H,bitangent);
-      D=GTR2_Anisotropic(NdotH,HdotX,HdotY,ax,ay);
-      float VdotX=dot(ray,tangent);
-      float VdotY=dot(ray,bitangent);
-      float LdotX=dot(wi,tangent);
-      float LdotY=dot(wi,bitangent);
-      G=SmithG_GGX_Anisotropic(Ndotray,VdotX,VdotY,ax,ay)*SmithG_GGX_Anisotropic(Ndotwi,LdotX,LdotY,ax,ay);
-      specularPDF=GTR2_Anisotropic(NdotH,dot(H,tangent),dot(H,bitangent),ax,ay)*NdotH/(4.0*Hdotray+EPS);
-    // }else{//各向同性
-    //   D=GTR2(NdotH,alpha);
-    //   G=SmithG_GGX(Ndotray,mat.roughness)*SmithG_GGX(Ndotwi,mat.roughness);
-    //   specularPDF=D*NdotH/(4.0*Hdotray+EPS);
-    // }
+    float aspect=max(EPS, sqrt(1.0-0.9*mat.anisotropic));
+    float ax=max(EPS,alpha/aspect);
+    float ay=max(EPS,alpha*aspect);
+    float HdotX=dot(H,tangent);
+    float HdotY=dot(H,bitangent);
+    D=GTR2_Anisotropic(NdotH,HdotX,HdotY,ax,ay);
+    float VdotX=dot(ray,tangent);
+    float VdotY=dot(ray,bitangent);
+    float LdotX=dot(wi,tangent);
+    float LdotY=dot(wi,bitangent);
+    G=SmithG_GGX_Anisotropic(Ndotray,VdotX,VdotY,ax,ay)*SmithG_GGX_Anisotropic(Ndotwi,LdotX,LdotY,ax,ay);
+    specularPDF=GTR2_Anisotropic(NdotH,dot(H,tangent),dot(H,bitangent),ax,ay)*NdotH/(4.0*Hdotray+EPS);
     float3 spec=(D*G*F)/(4.0*Ndotray*Ndotwi+EPS);
     if(mat.specular_tint>EPS)
     {
@@ -595,22 +589,22 @@ float3 EvalBSDF(inout Material mat, inout float3 ray, inout float3 wi, inout flo
   //     clearcoatPDF=GTR1(NdotH,clearcoat_alpha)*NdotH/(4.0*Hdotray);
   //   }
   //   sheenPDF=diffusePDF;
-  // }
-  //lobe权重
+   }
   //lobe权重
   float diffuseweight=(1.0-mat.metallic)*(1.0-mat.transparency);//漫反射
   float F0_scalar = dot(F0, float3(0.299, 0.587, 0.114));
-  float specularweight=SchlickFresnelScalar(F0_scalar,dot(ray,normal))*(1.0-mat.transparency);  //float transmissionweight=mat.transparency*mat.specular_transmission;//透射
-  //float clearcoatweight=mat.clearcoat;//清漆层  
-  //float sheenweight=mat.sheen*(1.0-mat.metallic);//光泽层
+  float specularweight=SchlickFresnelScalar(F0_scalar,dot(ray,normal))*(1.0-mat.transparency);
+  float transmissionweight=mat.transparency*(1.0-mat.metallic);//透射
+  //float clearcoatweight=0.25*mat.clearcoat*(1.0-mat.transparency);//清漆层  
+  //float sheenweight=mat.sheen*(1.0-mat.metallic)*(1.0-mat.transparency);//光泽层
   // //normalization
-  float total=diffuseweight+specularweight;//+transmissionweight+clearcoatweight+sheenweight;
+  float total=diffuseweight+specularweight+transmissionweight;//+clearcoatweight+sheenweight;
   diffuseweight/=total;
   specularweight/=total;
   //transmissionweight/=total;
   //clearcoatweight/=total;
   //sheenweight/=total;
-  pdf=diffusePDF*diffuseweight+specularPDF*specularweight;//+transmissionweight*transmissionPDF+clearcoatweight*clearcoatPDF+sheenPDF*sheenweight;
+  pdf=diffusePDF*diffuseweight+specularPDF*specularweight+transmissionweight*transmissionPDF;//+clearcoatweight*clearcoatPDF+sheenPDF*sheenweight;
   // ret = max(ret, float3(0.0, 0.0, 0.0));
   return ret;
 }

@@ -20,7 +20,6 @@ struct Material {
     float sheen_tint;       // 光泽层染色
     float clearcoat;        // 清漆层强度
     float clearcoat_roughness; // 清漆层粗糙度
-    float specular_transmission; // 镜面透射
 
     Material() : 
         base_color(0.8f, 0.8f, 0.8f), 
@@ -38,8 +37,7 @@ struct Material {
         sheen(0.0f),
         sheen_tint(0.0f),
         clearcoat(0.0f),
-        clearcoat_roughness(0.0f),
-        specular_transmission(0.0f) {}
+        clearcoat_roughness(0.0f) {}
     
     
     Material(const glm::vec3& color, float rough = 0.5f, float metal = 0.0f, 
@@ -47,7 +45,7 @@ struct Material {
              float refractive_index = 1.0f, float trans = 0.0f, int tex_id = -1,
              float sub = 0.0f, float spec = 0.0f, float spec_tint = 0.0f,
              float aniso = 0.0f, float sh = 0.0f, float sh_tint = 0.0f,
-             float coat = 0.0f, float coat_rough = 0.0f, float spec_trans = 0.0f) : 
+             float coat = 0.0f, float coat_rough = 0.0f) : 
         base_color(color), 
         roughness(rough), 
         metallic(metal), 
@@ -63,6 +61,5 @@ struct Material {
         sheen(sh),
         sheen_tint(sh_tint),
         clearcoat(coat),
-        clearcoat_roughness(coat_rough),
-        specular_transmission(spec_trans) {}
+        clearcoat_roughness(coat_rough) {}
 };
