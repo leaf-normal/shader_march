@@ -595,6 +595,7 @@ float3 EvalBSDF(inout Material mat, inout float3 ray, inout float3 wi, inout flo
   specularweight/=total;
   transmissionweight/=total;
   sheenweight/=total;
+  clearcoatweight/=total;
   if(is_trans)//透射
   {
     float n1 = is_flip ? mat.ior : 1.0; // V 侧 (Camera 侧)
