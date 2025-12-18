@@ -111,9 +111,10 @@ struct MotionParams {
     int group_id; 
 };
 StructuredBuffer<MotionParams> motion_groups : register(t0, space14);
+
+// Texture
 Texture2D<float4> g_Textures[128] : register(t0, space18);
 SamplerState g_Sampler : register(s0, space18);
-
 
 
 struct RayPayload {
@@ -598,6 +599,7 @@ float3 EvalBSDF(inout Material mat, inout float3 ray, inout float3 wi, inout flo
   specularweight/=total;
   transmissionweight/=total;
   sheenweight/=total;
+  clearcoatweight/=total;
   if(is_trans)//透射
   {
     float n1 = is_flip ? mat.ior : 1.0; // V 侧 (Camera 侧)
@@ -1110,9 +1112,6 @@ void RayGenMain() {
         float pdf;
         float3 bsdf_val = EvalBSDF(mat, wo, wi, payload.normal, payload.is_filp, pdf);
 
-        if (pdf <= 1e-7) {
-            break;
-        }
         if(isinf(pdf) || isnan(pdf)){
           color = float3(1e9, 0.0, isnan(pdf)? 1e9: 0);
           break;
@@ -1127,9 +1126,18 @@ void RayGenMain() {
             cos_theta = - cos_theta;
         }
 
+        bsdf_val *= cos_theta / pdf;
+
+        // prevent extreme cases
+        if (pdf < 1e-5 || f3_max(bsdf_val) > 1e3) {
+            break;
+        } 
+        // if (pdf < 2e-6 || f3_max(bsdf_val) > 5e3) {
+        //     break;
+        // } 
         
         // 更新吞吐量
-        throughput *= bsdf_val * cos_theta / pdf;
+        throughput *= bsdf_val;
         // throughput = max(throughput, float3(0.0, 0.0, 0.0));
 
         
@@ -1163,7 +1171,7 @@ void RayGenMain() {
 void MissMain(inout RayPayload payload) {
     // 简化的天空渐变
     float t = 0.5 * (normalize(WorldRayDirection()).y + 1.0);
-    payload.color = lerp(float3(1.0, 1.0, 1.0), float3(0.5, 0.7, 1.0), t) * 0.25;
+    payload.color = lerp(float3(1.0, 1.0, 1.0), float3(0.5, 0.7, 1.0), t) * 0.5;
     payload.hit = false;
     payload.instance_id = 0xFFFFFFFF;
 }
