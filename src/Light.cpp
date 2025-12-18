@@ -234,16 +234,16 @@ void LightManager::CreateDefaultLights() {
         glm::vec3(0.0f, 3.0f, 0.0f),      // 位置
         glm::vec3(0.0f, -1.0f, 0.0f),     // 法线方向（向下）
         glm::vec3(1.0f, 0.0f, 0.0f),      // 切向量（指向X轴）
-        glm::vec2(1.5f, 1.5f),            // 尺寸
+        glm::vec2(2.0f, 2.0f),            // 尺寸
         glm::vec3(1.0f, 1.0f, 0.9f),      // 暖白色
-        2.0f,                             // 强度
+        1.0f,                             // 强度
         true                              // 可见
     );
     lights_.push_back(visible_area_light);
     
     //创建一个可见的球光源
     Light visible_sphere_light = Light::CreateSphereLight(
-        glm::vec3(-3.4f, 1.3f, 0.0f),     // 位置
+        glm::vec3(-3.5f, 1.3f, 0.0f),     // 位置
         0.15f,                             // 半径
         glm::vec3(1.0f, 0.8f, 0.6f),      // 暖黄色
         13.0f,                             // 强度

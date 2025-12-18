@@ -5,7 +5,7 @@ struct Material {
     glm::vec3 base_color;
     float roughness;
     float metallic;
-    unsigned int light_index;
+    uint32_t light_index;
 
     glm::vec3 emission;        // 自发光颜色
     float ior;              // 折射率
@@ -20,6 +20,8 @@ struct Material {
     float sheen_tint;       // 光泽层染色
     float clearcoat;        // 清漆层强度
     float clearcoat_roughness; // 清漆层粗糙度
+
+    uint32_t group_id;
 
     Material() : 
         base_color(0.8f, 0.8f, 0.8f), 
@@ -37,11 +39,12 @@ struct Material {
         sheen(0.0f),
         sheen_tint(0.0f),
         clearcoat(0.0f),
-        clearcoat_roughness(0.0f) {}
+        clearcoat_roughness(0.0f),
+        group_id(0) {}
     
     
     Material(const glm::vec3& color, float rough = 0.5f, float metal = 0.0f, 
-             unsigned int index = 0xFFFFFFFF, const glm::vec3& emit = glm::vec3(0.0f, 0.0f, 0.0f),
+             uint32_t index = 0xFFFFFFFF, const glm::vec3& emit = glm::vec3(0.0f, 0.0f, 0.0f),
              float refractive_index = 1.0f, float trans = 0.0f, int tex_id = -1,
              float sub = 0.0f, float spec = 0.0f, float spec_tint = 0.0f,
              float aniso = 0.0f, float sh = 0.0f, float sh_tint = 0.0f,
@@ -61,5 +64,6 @@ struct Material {
         sheen(sh),
         sheen_tint(sh_tint),
         clearcoat(coat),
-        clearcoat_roughness(coat_rough) {}
+        clearcoat_roughness(coat_rough),
+        group_id(0) {}
 };
