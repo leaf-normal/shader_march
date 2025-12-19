@@ -101,7 +101,7 @@ struct Light {
 };
 
 StructuredBuffer<Light> lights : register(t0, space12);                // hdr is not included in lights
-StructuredBuffer<float> light_power_weights : register(t0, space13);   // Power weight of hdr will be added to last position
+StructuredBuffer<float> light_power_weights : register(t0, space13);   // Range from [0, light_count + 1), with power weight of hdr added to last position
 
 // 物体运动
 
@@ -407,7 +407,7 @@ void sample_hdr(inout float3 hit_point, inout uint seed, out LightSample sample)
     float3 hdr_color = g_Textures[render_setting.skybox_texture_id_].SampleLevel(g_Sampler, float2(u, v), 0).rgb;
     float luminance = dot(hdr_color, float3(0.2126, 0.7152, 0.0722));
     
-    float solid_angle_pdf = luminance * sin_theta / hdr_total_luminance;
+    float solid_angle_pdf = luminance / hdr_total_luminance;
     
     // 5. 设置采样结果
     sample.position = hit_point + direction * 10000.0; // 远点
@@ -1152,7 +1152,7 @@ void RayGenMain() {
 
                     if(light.type == 4){
                         float luminance = dot(payload.color, float3(0.2126, 0.7152, 0.0722));
-                        light_pdf = luminance * sqrt(1 - sqr(-wo.y)) / hdr_cdf[2];  // sin theta
+                        light_pdf = luminance / hdr_cdf[2];
 
                     } else{
                         float3 to_light = payload.hit_point - prev_hit_point;
