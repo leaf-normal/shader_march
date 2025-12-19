@@ -3,7 +3,6 @@
 #include "Entity.h"
 #include "Light.h"
 #include "TextureManager.h"
-// #include "TextureManager.cpp"
 
 #include "glm/gtc/matrix_transform.hpp"
 #include "imgui.h"
@@ -380,7 +379,8 @@ void Application::OnInit() {
     int checkerTexId = texture_manager_->LoadTexture("textures/1.png");
     //HDR
     try {
-        skybox_texture_id_ = texture_manager_->LoadHDRTexture("textures/skybox.hdr", MUL_INTENS_SKYBOX);
+        skybox_texture_id_ = texture_manager_->LoadHDRTexture("textures/skybox_2k.hdr", 
+                                                            MUL_INTENS_SKYBOX); // set in light.h
         enable_skybox_ = true;
         // skybox_intensity_ = 1.0f;
         // skybox_rotation_ = 0.0f;
@@ -1365,6 +1365,7 @@ void Application::OnRender() {
     }
 
     std::shared_ptr<grassland::graphics::Buffer> empty_buffer;
+    core_->CreateBuffer(1, grassland::graphics::BUFFER_TYPE_DYNAMIC, &empty_buffer);    
 
     std::unique_ptr<grassland::graphics::CommandContext> command_context;
     core_->CreateCommandContext(&command_context);
