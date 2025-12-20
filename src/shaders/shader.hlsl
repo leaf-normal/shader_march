@@ -1126,9 +1126,9 @@ void RayGenMain() {
                 if (depth == 0) {
                     entity_id_output[pixel_coords] = (int)payload.instance_id;
                 }
-
                 mat = materials[payload.instance_id];
                 light_idx = mat.light_index;
+            }
             mat.base_color = payload.color;
             if(payload.attribute.r>=-EPS)
             {

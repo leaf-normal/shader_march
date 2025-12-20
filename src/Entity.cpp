@@ -54,11 +54,10 @@ void Entity::BuildBLAS(grassland::graphics::Core* core) {
     const glm::vec3* positions = reinterpret_cast<const glm::vec3*>(mesh_.Positions());
     const glm::vec3* normals = reinterpret_cast<const glm::vec3*>(mesh_.Normals());
     const glm::vec2* texcoords = reinterpret_cast<const glm::vec2*>(mesh_.TexCoords());
-
     if (ENABLE_NORMAL_INTERPOLATION && normals) {
         grassland::LogInfo("Use provided normals in the mesh.");
         for (size_t i = 0; i < mesh_.NumVertices(); ++i) {
-            vertex_infos.emplace_back(positions[i], normals[i], texcoords[i]);
+            vertex_infos.emplace_back(positions[i], normals[i], texcoords ? texcoords[i] : glm::vec2(0, 0));
         }
     } 
     else if(ENABLE_NORMAL_INTERPOLATION && CALCULATE_MISSING_NORMALS){
@@ -93,7 +92,7 @@ void Entity::BuildBLAS(grassland::graphics::Core* core) {
         }
 
         for (size_t i = 0; i < mesh_.NumVertices(); ++i) {
-            vertex_infos.emplace_back(positions[i], accumulated_normals[i], texcoords[i]);
+            vertex_infos.emplace_back(positions[i], accumulated_normals[i], texcoords ? texcoords[i] : glm::vec2(0, 0));
         }
         grassland::LogInfo("Calculated {} average normals for the mesh.", mesh_.NumVertices());
 
@@ -101,7 +100,7 @@ void Entity::BuildBLAS(grassland::graphics::Core* core) {
 
         grassland::LogWarning("Mesh has no normals! Results may be incorrect");
         for (size_t i = 0; i < mesh_.NumVertices(); ++i) {
-            vertex_infos.emplace_back(positions[i], glm::vec3(0.0f, 0.0f, 0.0f), texcoords[i]);
+            vertex_infos.emplace_back(positions[i], glm::vec3(0.0f, 0.0f, 0.0f), texcoords ? texcoords[i] : glm::vec2(0, 0));
         }
     }
 
