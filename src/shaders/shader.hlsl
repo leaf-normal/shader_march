@@ -23,6 +23,8 @@ struct Material {
   float ior;                // 折射率
   float transparency;       // 透明度 
   int texture_id;
+  int normal_tex_id;
+  int attribute_tex_id;
   
   float subsurface;     //次表面散射
   float specular;      //镜面反射强度
@@ -63,6 +65,7 @@ struct GeometryDescriptor {
 struct VertexInfo {
     float3 position;
     float3 normal;    
+    float2 texcoord;
 };
 
 StructuredBuffer<GeometryDescriptor> geometry_descriptors : register(t0, space8);
@@ -129,6 +132,7 @@ struct RayPayload {
   float3 normal;
   float3 hit_point;
   bool is_filp;
+  float4 attribute;
 };
 
 // ====================== 常量定义 ======================
@@ -524,24 +528,35 @@ float3 SampleHemisphereCos(float2 randd, inout float3 normal)
   return normalize(x*tangent+y*bitangent+z*normal);
 }
 
-float3 SampleGGX_VNDF(inout float3 ray, float roughness, float2 rd, inout float3 normal)
-{ 
-  float3 V=ray;
-  float alpha=sqr(roughness);
-  float3 Vh=normalize(float3(alpha*V.x,alpha*V.y,V.z));
-  float3 up=abs(Vh.z)<1-eps?float3(0.0,0.0,1.0):float3(1.0,0.0,0.0);
-  float3 T1=normalize(cross(up,Vh));
-  float3 T2=cross(Vh,T1);
-  float r=sqrt(rd.x);
-  float phi=2.0*PI*rd.y;
-  float t1=r*cos(phi);
-  float t2=r*sin(phi);
-  float s=0.5*(1.0+Vh.z);
-  t2=(1.0-s)*sqrt(1.0-sqr(t1))+s*t2;
-  float3 Nh=t1*T1+t2*T2+sqrt(max(0.0,1.0-sqr(t1)-sqr(t2)))*Vh;
-  float3 H=normalize(float3(alpha*Nh.x,alpha*Nh.y,max(0.0,Nh.z)));
-  return H;
+void GetTangent(inout float3 normal, out float3 tangent, out float3 bitangent)
+{
+  float3 up=abs(normal.z)<0.999?float3(0.0,0.0,1.0):float3(1.0,0.0,0.0);
+  tangent=normalize(cross(up,normal));
+  bitangent=cross(normal,tangent);
 }
+
+float3 SampleGGX_VNDF_Isotropic(float3 V_world, float3 N_world, float roughness,float2 u)
+{
+    float3 T, B;
+    GetTangent(N_world, T, B);
+    float3 V = normalize(float3(dot(V_world, T), dot(V_world, B), dot(V_world, N_world)));
+    float alpha = max(EPS, roughness);
+    float3 Vh = normalize(float3(alpha * V.x, alpha * V.y, V.z));
+    float3 up = (abs(Vh.z) < 1.0 - EPS) ? float3(0.0, 0.0, 1.0) : float3(1.0, 0.0, 0.0);
+    float3 T1 = normalize(cross(up, Vh));
+    float3 T2 = cross(Vh, T1);
+    float r = sqrt(u.x);
+    float phi = 2.0 * PI * u.y;
+    float t1 = r * cos(phi);
+    float t2 = r * sin(phi);
+    float s  = 0.5 * (1.0 + Vh.z);
+    t2 = (1.0 - s) * sqrt(max(0.0, 1.0 - t1 * t1)) + s * t2;
+    float3 Nh = t1 * T1 + t2 * T2 + sqrt(max(0.0, 1.0 - t1 * t1 - t2 * t2)) * Vh;
+    float3 H = normalize(float3(alpha * Nh.x, alpha * Nh.y, max(0.0, Nh.z)));
+    float3 H_world = normalize(H.x * T + H.y * B + H.z * N_world);
+    return H_world;
+}
+
 float3 SampleGGX_Anisotropic(float3 ray, float roughness, float anisotropic, float2 rd, float3 normal, float3 tangent)
 {
 
@@ -569,12 +584,6 @@ float3 SampleGGX_Anisotropic(float3 ray, float roughness, float anisotropic, flo
     return H_world;
 }
 
-void GetTangent(inout float3 normal, out float3 tangent, out float3 bitangent)
-{
-  float3 up=abs(normal.z)<0.999?float3(0.0,0.0,1.0):float3(1.0,0.0,0.0);
-  tangent=normalize(cross(up,normal));
-  bitangent=cross(normal,tangent);
-}
 
 // --- 新增的透射相关辅助函数 (修正版) ---
 
@@ -1094,7 +1103,7 @@ void RayGenMain() {
     for (int depth = 0; depth < min(render_setting.max_depth, MAX_DEPTH); ++depth) {
 
         RayPayload payload;
-        
+        payload.attribute=float4(-1.0,-1.0,-1.0,-1.0);
         TraceRay(as, RAY_FLAG_NONE, 0xFF, 0, 1, 0, ray, payload);
         // Traceray(ray, payload, 0);
 
@@ -1120,6 +1129,13 @@ void RayGenMain() {
 
                 mat = materials[payload.instance_id];
                 light_idx = mat.light_index;
+            mat.base_color = payload.color;
+            if(payload.attribute.r>=-EPS)
+            {
+                mat.roughness = payload.attribute.r;
+                mat.specular = payload.attribute.g;
+                mat.metallic = payload.attribute.b;
+                mat.roughness = payload.attribute.a;
             }
         }
 
@@ -1331,21 +1347,37 @@ void ClosestHitMain(inout RayPayload payload, in BuiltInTriangleIntersectionAttr
     
     // 计算法线
     float3 object_space_normal;
+    float w0 = attr.barycentrics.x;
+    float w1 = attr.barycentrics.y;
+    float2 object_texcoord = w0 * v1.texcoord + w1 * v2.texcoord + (1.0 - w0 - w1) * v0.texcoord;
+    int normal_id = materials[InstanceID()].normal_tex_id;
+    int attribute_id = materials[InstanceID()].attribute_tex_id;
+    if(normal_id >= 0) {
+        float3 norm = g_Textures[normal_id].SampleLevel(g_Sampler, object_texcoord, 0).rgb;
+        object_space_normal = normalize(norm * 2.0 - 1.0);
+    } else {
     if (length(v0.normal) < 1e-6) {
         // 使用几何法线
         object_space_normal = cross(v1.position - v0.position, v2.position - v0.position);
     } else {
         // 插值顶点法线
-        float w0 = attr.barycentrics.x;
-        float w1 = attr.barycentrics.y;
         object_space_normal = w0 * v1.normal + w1 * v2.normal + (1.0 - w0 - w1) * v0.normal;
     }
-    
+    }
+    if(attribute_id >= 0) {
+        payload.attribute = g_Textures[attribute_id].SampleLevel(g_Sampler, object_texcoord, 0).rgba;
+    }
     object_space_normal = normalize(object_space_normal);
     
     // 转换到世界空间
     float3x3 normal_matrix = (float3x3)transpose(WorldToObject4x3());
     payload.normal = normalize(mul(normal_matrix, object_space_normal));
+    
+    int texture_id = materials[InstanceID()].texture_id;
+    if(texture_id >= 0){
+        payload.color = g_Textures[texture_id].SampleLevel(g_Sampler, object_texcoord, 0).rgb;
+    }
+    else payload.color = materials[InstanceID()].base_color;
     
     // 确保法线朝向射线方向
     payload.is_filp = false;
