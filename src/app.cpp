@@ -376,7 +376,9 @@ void Application::OnInit() {
     //初始化TextureManager
     texture_manager_ = std::make_unique<TextureManager>(core_.get());
     //测试纹理
-    int checkerTexId = texture_manager_->LoadTexture("textures/1.png");
+    int colorTexId=texture_manager_->LoadTexture("textures/1.png");
+    int normalTexId=texture_manager_->LoadTexture("textures/2.png");
+//    int attributeTexId=texture_manager_->LoadTexture("textures/3.png");
     //HDR
     try {
         skybox_texture_id_ = texture_manager_->LoadHDRTexture("textures/skybox_2k.hdr", 
@@ -427,7 +429,7 @@ void Application::OnInit() {
         auto ground = std::make_shared<Entity>(
             "meshes/cube.obj",
             Material(glm::vec3(0.8f, 0.8f, 0.8f), 0.4f, 0.2f,
-            0xFFFFFFFF, glm::vec3(0, 0, 0), 1, 0.0, -1, 0.0, 0.6
+            0xFFFFFFFF, glm::vec3(0, 0, 0), 1, 0.0, -1, -1, -1, 0.0, 0.6
             // Material(glm::vec3(0.8f, 0.8f, 0.8f), 0.15f, 0.5f,
             // 0xFFFFFFFF, glm::vec3(0, 0, 0), 1, 0.0, -1, 0.0, 0.9
         ),
@@ -440,8 +442,8 @@ void Application::OnInit() {
     {
         auto red_sphere = std::make_shared<Entity>(
             "meshes/octahedron.obj",
-            Material(glm::vec3(0.99f, 0.97f, 0.97f), 0.15f, 0.1f,
-            0xFFFFFFFF, glm::vec3(0, 0, 0), 1.1, 0.98, -1, 0.0, 0.2, 0.1, 0.0, 0.0, 0.0
+            Material(glm::vec3(0.99f, 0.97f, 0.97f), 0.20f, 0.1f,
+            0xFFFFFFFF, glm::vec3(0, 0, 0), 1.1, 0.98, -1, -1, -1, 0.0, 0.2, 0.1, 0.0, 0.0, 0.0
 
             // Material(glm::vec3(0.95f, 0.0f, 0.0f), 0.4f, 0.1f,
             // 0xFFFFFFFF, glm::vec3(0, 0, 0), 1, 0.0, -1, 0.0, 0.2, 0.1, 0.0, 0.0, 0.0, 1.0, 0.1
@@ -455,7 +457,7 @@ void Application::OnInit() {
         auto green_sphere = std::make_shared<Entity>(
             "meshes/preview_sphere.obj",
             Material(glm::vec3(0.85f, 0.85f, 0.85f), 0.05f, 0.7f,
-            0xFFFFFFFF, glm::vec3(0, 0, 0), 1, 0.0, -1, 0.0, 0.9, 0.1, 0.0
+            0xFFFFFFFF, glm::vec3(0, 0, 0), 1, 0.0, -1, -1, -1, 0.0, 0.9, 0.1, 0.0
                 ),
             // Material(glm::vec3(0.8f, 0.95f, 0.8f), 0.2f, 0.0f),
                 glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.5f, 0.0f))
@@ -466,7 +468,9 @@ void Application::OnInit() {
     {
         auto blue_cube = std::make_shared<Entity>(
             "meshes/cube.obj",
-            Material(glm::vec3(0.2f, 0.2f, 1.0f), 0.6f, 0.2f),
+            Material(glm::vec3(0.2f, 0.2f, 1.0f), 0.6f, 0.2f,
+            0xFFFFFFFF, glm::vec3(0, 0, 0), 1, 0.0, colorTexId, normalTexId, -1
+        ),
             glm::translate(glm::mat4(1.0f), glm::vec3(2.0f, 0.5f, 0.0f))
         );
         scene_->AddEntity(blue_cube);
