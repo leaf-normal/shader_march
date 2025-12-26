@@ -1854,14 +1854,13 @@ void RayGenMain() {
                 // 路径前缀上的 Beer（到 scattering 点）
                 float3 T = exp(-medium.sigma_t * t_medium);
 
-                float3 pdf_t = dot(medium.sigma_t, T) / 3.0;
-                
+                float pdf_t = dot(medium.sigma_t, T) / 3.0;
+            
+                throughput *= T / pdf_t;
                 // 体积自发光
-                if (any(medium.Le > 0.0)) {
-                    color += (1.0 - T) * medium.Le / medium.sigma_t * (throughput / pdf_t); // 此处独立计算
-                }
+                color += medium.Le * throughput; // 视为单个点光源
 
-                throughput *= medium.sigma_s * T / pdf_t;
+                throughput *= medium.sigma_s; // 散射系数
 
                 // 采样 lights（和 surface 的 direct 类似，只是 BSDF 换成 phase function）
                 float3 vol_direct = mis_direct_lighting(light_count, scatter_point, float3(0.0f, 0.0f, 0.0f), mat, float3(0.0f, 0.0f, 0.0f), payload.is_filp, seed);
