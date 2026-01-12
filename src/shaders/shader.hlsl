@@ -658,7 +658,7 @@ float SmithG_GGX_Correlated_Anisotropic(float NdotV,float NdotL,float VdotX,floa
     float lambdaV = (-1.0 + sqrt(1.0 + (sqr(VdotX * ax) + sqr(VdotY * ay)) / sqr(NdotV))) * 0.5;
     float lambdaL = (-1.0 + sqrt(1.0 + (sqr(LdotX * ax) + sqr(LdotY * ay)) / sqr(NdotL))) * 0.5;
     float G = 1.0 / (1.0 + lambdaV + lambdaL);
-    return G;
+    return G / (4.0 * NdotV * NdotL + EPS);
 }
 float3 SampleHemisphereCos(float2 randd, inout float3 normal)
 {
@@ -680,26 +680,31 @@ void GetTangent(in float3 normal, out float3 tangent, out float3 bitangent)
   bitangent=cross(normal,tangent);
 }
 
-float3 SampleGGX_VNDF_Isotropic(float3 V_world, float3 N_world, float roughness,float2 u)
-{
-    float3 T, B;
-    GetTangent(N_world, T, B);
-    float3 V = normalize(float3(dot(V_world, T), dot(V_world, B), dot(V_world, N_world)));
-    float alpha = max(EPS, roughness);
-    float3 Vh = normalize(float3(alpha * V.x, alpha * V.y, V.z));
-    float3 up = (abs(Vh.z) < 1.0 - EPS) ? float3(0.0, 0.0, 1.0) : float3(1.0, 0.0, 0.0);
-    float3 T1 = normalize(cross(up, Vh));
+float2 SampleDisk(float2 u) {
+    float r = sqrt(u.x);
+    float theta = 2.0 * PI * u.y;
+    return float2(r * cos(theta), r * sin(theta));
+}
+float3 SampleGGX_VNDF_TangentSpace(float3 Ve, float roughness, float2 u) {
+    float3 Vh = normalize(float3(roughness * Ve.x, roughness * Ve.y, Ve.z));    
+    float lensq = Vh.x * Vh.x + Vh.y * Vh.y;
+    float3 T1 = lensq > 0.0 ? float3(-Vh.y, Vh.x, 0.0) * rsqrt(lensq) : float3(1.0, 0.0, 0.0);
     float3 T2 = cross(Vh, T1);
     float r = sqrt(u.x);
     float phi = 2.0 * PI * u.y;
     float t1 = r * cos(phi);
     float t2 = r * sin(phi);
-    float s  = 0.5 * (1.0 + Vh.z);
-    t2 = (1.0 - s) * sqrt(max(0.0, 1.0 - t1 * t1)) + s * t2;
+    float s = 0.5 * (1.0 + Vh.z);
+    t2 = (1.0 - s) * sqrt(1.0 - t1 * t1) + s * t2;
     float3 Nh = t1 * T1 + t2 * T2 + sqrt(max(0.0, 1.0 - t1 * t1 - t2 * t2)) * Vh;
-    float3 H = normalize(float3(alpha * Nh.x, alpha * Nh.y, max(0.0, Nh.z)));
-    float3 H_world = normalize(H.x * T + H.y * B + H.z * N_world);
-    return H_world;
+    float3 Ne = normalize(float3(roughness * Nh.x, roughness * Nh.y, max(0.0, Nh.z)));
+    return Ne;
+}
+
+float3 SampleGGX_VNDF(float3 V, float roughness, float2 u, float3 N, float3 T, float3 B) {
+    float3 Ve = float3(dot(V, T), dot(V, B), dot(V, N));
+    float3 H_t = SampleGGX_VNDF_TangentSpace(Ve, roughness, u);
+    return normalize(H_t.x * T + H_t.y * B + H_t.z * N);
 }
 
 float3 SampleGGX_Anisotropic(float3 ray, float roughness, float anisotropic, float2 rd, float3 normal, float3 tangent)
@@ -1115,13 +1120,26 @@ bool SampleBSDF(inout Material mat, inout float3 ray, inout float3 normal, out f
     if(dot(normal,wi)<=0.0)return 0;
   }else if(randLobe<diffuseweight+specularweight+transmissionweight+sheenweight)//透射
   {
-    float eta=(!is_flip)?1.0/mat.ior:mat.ior;
-    float3 H=SampleGGX_Distribution(mat.roughness, random2(seed), normal, tangent, bitangent); //后续可以继续改为VNDF // replace
-    if(Refract(-ray,H,eta,wi)==false)
-    {
-        wi=reflect(-ray,H);//全反射
-        if(dot(normal,wi)<=0.0)return 0;
+    float3 H;
+    float3 temp_wi;
+    bool valid_sample = false;
+    for(int i = 0; i < 3; i++) {
+        H = SampleGGX_VNDF(ray, mat.roughness, random2(seed), normal, tangent, bitangent);
+        float eta = (!is_flip) ? 1.0/mat.ior : mat.ior;        
+        if (Refract(-ray, H, eta, temp_wi)) {
+            valid_sample = true;
+            wi = temp_wi;
+            break; 
+        } else {
+            temp_wi = reflect(-ray, H);
+            if (dot(normal, temp_wi) > 0.0) {
+                valid_sample = true;
+                wi = temp_wi;
+                break;
+            }
+        }
     }
+    if (!valid_sample) return 0; // 实在救不回来，只能丢弃
   }else{//清漆
     float alpha_c=max(EPS, mat.clearcoat_roughness);
     float3 H=SampleGGX_Distribution(alpha_c,random2(seed),normal,tangent,bitangent);
@@ -1137,9 +1155,9 @@ float3 EvalBSDF(inout Material mat, inout float3 ray, inout float3 wi, inout flo
   float3 ret=float3(0.0,0.0,0.0);
   float3 tangent,bitangent;
 //   float3 F0=lerp(0.08*mat.specular,mat.base_color,mat.metallic);
-    float F0_ior = pow((mat.ior - 1.0) / (mat.ior + 1.0), 2.0);
-    float3 F0_dieletric = float3(F0_ior, F0_ior, F0_ior);
-    float3 F0 = lerp(F0_dieletric, mat.base_color, mat.metallic);
+  float F0_ior = pow((mat.ior - 1.0) / (mat.ior + 1.0), 2.0);
+  float3 F0_dieletric = float3(F0_ior, F0_ior, F0_ior);
+  float3 F0 = lerp(F0_dieletric, mat.base_color, mat.metallic);
 
   GetTangent(normal,tangent,bitangent);
   float Ndotray=dot(normal,ray);
@@ -1156,6 +1174,9 @@ float3 EvalBSDF(inout Material mat, inout float3 ray, inout float3 wi, inout flo
     return float3(0.0,0.0,0.0);
   }
   float alpha=sqr(mat.roughness);
+  float ax=max(EPS,alpha/sqrt(1.0-0.9*mat.anisotropic));
+  float ay=max(EPS,alpha*sqrt(1.0-0.9*mat.anisotropic));
+  float G1_V=SmithG_GGX_Anisotropic(Ndotray, dot(ray, tangent), dot(ray, bitangent), ax, ay);
   float transmissionPDF=0.0;
   float specularPDF=0.0;
   float diffusePDF=0.0;
@@ -1177,6 +1198,32 @@ float3 EvalBSDF(inout Material mat, inout float3 ray, inout float3 wi, inout flo
   clearcoatweight/=total;
   if(is_trans)//透射
   {
+    // float n1 = is_flip ? mat.ior : 1.0; // V 侧 (Camera 侧)
+    // float n2 = is_flip ? 1.0 : mat.ior; // L 侧 (Light 侧)
+    // float3 V = ray;
+    // float3 L = wi;
+    // float3 H = -(n1 * V + n2 * L);
+    // if (dot(H, H) < EPS) {
+    //     pdf = 0.0;
+    //     return float3(0.0, 0.0, 0.0);
+    // }
+    // H = normalize(H);
+    // float VdotH = dot(V, H);
+    // float LdotH = dot(L, H);
+    // float NdotH = dot(normal, H);
+    // float NdotV = dot(normal, V);
+    // float NdotL = dot(normal, L);
+    // float D = GTR2(NdotH, mat.roughness); // 使用你现有的 GGX D
+    // float G = SmithG_GGX_Correlated(abs(NdotV), abs(NdotL), mat.roughness); // 你的 G
+    // float3 F_color = SchlickFresnel(F0, abs(VdotH)); 
+    // float3 T_color = 1.0 - F_color; // 透射颜色
+    // float sqrtDenom = n1 * VdotH + n2 * LdotH;
+    // float commonDenom = sqrtDenom * sqrtDenom + EPS;
+    // float factor = (abs(VdotH) * abs(LdotH) * n2 * n2) / (abs(NdotV) * abs(NdotL) * commonDenom);
+    // ret += mat.base_color * T_color * D * G * factor * transmissionweight;
+    // float jacobian = (n2 * n2 * abs(LdotH)) / commonDenom;
+    // float pdf_h_vndf = (D * G1_V * abs(VdotH)) / (abs(NdotV) + EPS); 
+    // transmissionPDF = pdf_h_vndf * jacobian;
     float n1 = is_flip ? mat.ior : 1.0; // V 侧 (Camera 侧)
     float n2 = is_flip ? 1.0 : mat.ior; // L 侧 (Light 侧)
     float3 V = ray;
@@ -1193,16 +1240,20 @@ float3 EvalBSDF(inout Material mat, inout float3 ray, inout float3 wi, inout flo
     float NdotV = dot(normal, V);
     float NdotL = dot(normal, L);
     float D = GTR2(NdotH, mat.roughness); // 使用你现有的 GGX D
-    float G = SmithG_GGX_Correlated(abs(NdotV), abs(NdotL), mat.roughness); // 你的 G
+    float G1V = SmithG_GGX(abs(NdotV), mat.roughness);
+    float G1L = SmithG_GGX(abs(NdotL), mat.roughness);
+    float G = G1V * G1L;
     float3 F_color = SchlickFresnel(F0, abs(VdotH)); 
     float3 T_color = 1.0 - F_color; // 透射颜色
     float sqrtDenom = n1 * VdotH + n2 * LdotH;
     float commonDenom = sqrtDenom * sqrtDenom + EPS;
     float factor = (abs(VdotH) * abs(LdotH) * n2 * n2) / (abs(NdotV) * abs(NdotL) * commonDenom);
-    ret += mat.base_color * T_color * D * G * factor * transmissionweight;
+    float shit = 0.86 / (0.6 / (exp( (- min(Ndotray,0.5) + 0.18) * 12) + 1) + 0.27);
+    ret += mat.base_color * T_color * D * G * factor * transmissionweight * shit;   // 神秘参数
+    // ret += mat.base_color * T_color * D * G * factor * transmissionweight;  // 正常版本
     float jacobian = (n2 * n2 * abs(LdotH)) / commonDenom;
-    transmissionPDF = D * abs(NdotH) * jacobian;
-
+    float pdf_h_vndf = (D * G1V * abs(VdotH)) / (abs(NdotV) + EPS);
+    transmissionPDF = pdf_h_vndf * jacobian;
   }else{
     float3 H=normalize(ray+wi);
     float NdotH=dot(normal,H);
@@ -1225,8 +1276,6 @@ float3 EvalBSDF(inout Material mat, inout float3 ray, inout float3 wi, inout flo
     diffusePDF=max(Ndotwi,0.0)/PI;
 
     // 镜面反射
-    float ax=max(EPS,alpha/sqrt(1.0-0.9*mat.anisotropic));
-    float ay=max(EPS,alpha*sqrt(1.0-0.9*mat.anisotropic));
     float D=GTR2_Anisotropic(NdotH,dot(H,tangent),dot(H,bitangent),ax,ay);
     float Vis=SmithG_GGX_Correlated_Anisotropic(Ndotray,Ndotwi,dot(ray,tangent), dot(ray, bitangent), dot(wi, tangent), dot(wi, bitangent), ax, ay);
     float3 spec=D*Vis*F; 
@@ -1237,9 +1286,7 @@ float3 EvalBSDF(inout Material mat, inout float3 ray, inout float3 wi, inout flo
     }
     ret+=spec*specularweight;
     float aspect_eff = sqrt(1.0 - 0.9 * mat.anisotropic);
-    float G1_V=SmithG_GGX_Anisotropic(Ndotray, dot(ray, tangent), dot(ray, bitangent), ax, ay);
     specularPDF=(D*G1_V)/(4.0*Ndotray+EPS);
-
     // 全反射
     if(transmissionweight > EPS)
     {
@@ -1248,13 +1295,11 @@ float3 EvalBSDF(inout Material mat, inout float3 ray, inout float3 wi, inout flo
         float k = 1.0 - eta * eta * (1.0 - c * c);
         if (k < 0.0) // 发生了全反射
         {
-            float D_iso = GTR2(NdotH, mat.roughness);
-            float pdf_h_tir = D_iso * abs(NdotH);
-            ret+=spec*transmissionweight;
-            transmissionPDF = pdf_h_tir / (4.0 * abs(Hdotray) + EPS);
+            float3 tir_term = D * Vis * float3(1.0, 1.0, 1.0);
+            ret+=tir_term * transmissionweight;
+            transmissionPDF = specularPDF;
         }
     }
-
     //光泽层
     if (mat.sheen > EPS && mat.metallic < 1.0 && mat.transparency < 1.0)
     {
