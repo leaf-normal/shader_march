@@ -486,7 +486,7 @@ void sample_spot_light(inout Light light, inout float3 hit_point, inout uint see
     float epsilon = 0.1 * (1.0 - cos_cutoff);
     float spot_factor = smoothstep(cos_cutoff, cos_cutoff + epsilon, cos_angle);
     
-    // // 物理正确的辐射亮度
+    // 物理正确的辐射亮度
     float solid_angle = 2.0 * PI * (1.0 - cos_cutoff);
     sample.radiance = light.color * light.intensity * spot_factor / (distance * distance + 1e-6);
     
@@ -741,17 +741,7 @@ float3 SampleGGX_Distribution(float roughness, float2 rd, inout float3 normal, i
     return normalize(H_world);
 }
 
-
-// ====================== Mip atlas explicit LOD sampling ======================
-
-// 将 (texId, lod) 映射到 g_MipAtlas 的全局索引
-uint GetMipAtlasIndex(int texId, int lod)
-{
-    if (texId < 0) return 0;
-    MipInfo info = mip_infos[texId];
-    int clamped = clamp(lod, 0, int(info.levels) - 1);
-    return info.start + clamped;
-}
+// ====================== Adaptive mipmap 辅助函数 =============== 
 
 float4 SampleTexture2D_Lod(int texId, float2 uv, float lodf)
 {
@@ -774,9 +764,6 @@ float4 SampleTexture2D_Lod(int texId, float2 uv, float lodf)
     // 插值
     return lerp(c0, c1, t);
 }
-
-
-// ====================== Adaptive mipmap 辅助函数 =============== 
 
 // Solve 2x2 linear system A * x = b, where A = [a00 a01; a10 a11].
 // 返回是否成功（行列式不太小），并把解写入 out_x (float2)。
@@ -1447,27 +1434,6 @@ float2 concentric_sample_disk(inout uint seed) {
     return r * float2(cos(theta), sin(theta));
 }
 
-float3 compute_focal_point(float3 ray_origin, float3 ray_dir, float focal_distance) {
-    // 计算光线与焦平面的交点
-    // 假设焦平面垂直于相机前向方向
-    float3 camera_forward = float3(0.0, 0.0, -1.0); // 相机空间前向
-    float3 world_forward = mul((float3x3)camera_info.camera_to_world, camera_forward);
-    world_forward = normalize(world_forward);
-    
-    // 焦平面方程: dot(p - (origin + world_forward * focal_distance), world_forward) = 0
-    float3 focal_plane_origin = ray_origin + world_forward * focal_distance;
-    float denom = dot(ray_dir, world_forward);
-    
-    if (abs(denom) > 1e-6) {
-        float t = dot(focal_plane_origin - ray_origin, world_forward) / denom;
-        return ray_origin + ray_dir * t;
-    }
-    
-    // 平行于焦平面，使用近似值
-    return ray_origin + ray_dir * focal_distance;
-}
-
-
 // 生成主射线与两个邻像素射线（用于差分）
 // pixel: integer pixel coords (SV_DispatchThreadID or similar)
 // pixel_sample_offset: subpixel jitter in [0,1) for anti-aliasing
@@ -1585,19 +1551,6 @@ float GetSpectralAlbedo(float3 rgb, float3 w_spectral)
         // 彩色材质：使用光谱投影法
         return dot(rgb, w_spectral);
     }
-}
-
-float3 GetSpectralWeight(float wavelength_nm)
-{
-    // 波长范围 [380, 780], 步长 5nm, 共81个点
-    // SPECTRAL_TABLE[0] 对应 380nm, SPECTRAL_TABLE[80] 对应 780nm
-    float t = (wavelength_nm - 380.0) / 5.0;
-    int idx = (int)clamp(t, 0.0, 80.0);
-    
-    if (idx >= 80) return SPECTRAL_TABLE[80];
-    
-    float fract = t - (float)idx;
-    return lerp(SPECTRAL_TABLE[idx], SPECTRAL_TABLE[idx + 1], fract);
 }
 
 // 使用柯西公式计算折射率
@@ -2292,35 +2245,6 @@ float ComputeTextureLOD(Texture2D<float4> tex,
     if (lod < 0.0) lod = 0.0;
     return lod;
 }
-
-// // --- 1.1 计算三角形切线/副切线（per-triangle, constant） ---
-// // 返回 true 表示成功（UV 矩阵非退化），并输出 tangent, bitangent（未归一化后可 normalize）
-// bool ComputeTriangleTangentBasis(
-//     float3 v0, float3 v1, float3 v2,
-//     float2 uv0, float2 uv1, float2 uv2,
-//     out float3 tangent, out float3 bitangent)
-// {
-//     float3 E1 = v1 - v0;
-//     float3 E2 = v2 - v0;
-//     float du1 = uv1.x - uv0.x;
-//     float du2 = uv2.x - uv0.x;
-//     float dv1 = uv1.y - uv0.y;
-//     float dv2 = uv2.y - uv0.y;
-
-//     float det = du1 * dv2 - du2 * dv1;
-//     float tol = 1e-8;
-//     if (abs(det) < tol) {
-//         tangent = float3(0,0,0);
-//         bitangent = float3(0,0,0);
-//         return false;
-//     }
-//     float invDet = 1.0 / det;
-//     tangent = ( E1 * dv2 - E2 * dv1 ) * invDet;
-//     bitangent = ( -E1 * du2 + E2 * du1 ) * invDet;
-//     tangent = normalize(tangent);
-//     bitangent = normalize(bitangent);
-//     return true;
-// }
 
 // --- 1.2 顶点法线插值导数（barycentric 导数法） ---
 // ---------------------------------------------------------------------------
