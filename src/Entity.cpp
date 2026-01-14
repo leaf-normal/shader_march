@@ -104,6 +104,11 @@ void Entity::BuildBLAS(grassland::graphics::Core* core) {
         }
     }
 
+    for(auto &u: vertex_infos){
+        // u.texcoord[0] = 1 - u.texcoord[0];
+        u.texcoord[1] = 1 - u.texcoord[1];
+    }
+
 
     size_t vertex_info_buffer_size = mesh_.NumVertices() * sizeof(VertexInfo);
     core->CreateBuffer(vertex_info_buffer_size, 
