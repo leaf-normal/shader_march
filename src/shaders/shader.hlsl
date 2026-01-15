@@ -1470,9 +1470,6 @@ float GetSpectralAlbedo(float3 rgb, float3 w_spectral)
     }
 }
 
-// n(lambda) = A + B/lambda^2 + C/lambda^4
-// wavelength_nm: nm
-// A, B, C
 float GetCauchyIOR(float wavelength_nm, float A, float B, float C)
 {
     float lambda_um = wavelength_nm / 1000.0;
@@ -1587,8 +1584,8 @@ void RayGenMain() {
         dirCov[2][2] = dv_dx.z * dv_dx.z + dv_dy.z * dv_dy.z;
     }
 
-    diffs.hasDifferentials = false; // 暂不启用
-    hasDirCov = false;
+    // diffs.hasDifferentials = false; // disable
+    // hasDirCov = false;
 
     float3 color = float3(0.0, 0.0, 0.0);
     float3 throughput = float3(1.0, 1.0, 1.0);
@@ -1721,10 +1718,6 @@ void RayGenMain() {
             mat.specular = payload.attribute.g;
             mat.metallic = payload.attribute.b;
             mat.transparency = 1.0 - payload.attribute.a;
-            if(mat.transparency > 0.9){
-                mat.base_color = 1.0;
-                mat.roughness = 0.0;
-            }
         }
 
         if(enable_dispersion){
@@ -1866,11 +1859,8 @@ void RayGenMain() {
             cos_theta = - cos_theta;
         }
 
-        bsdf_val *= cos_theta / pdf;
+        bsdf_val *= cos_theta / max(pdf, EPS);
 
-        if (pdf < 2e-6 || f3_max(bsdf_val) > 5e3) {
-            break;
-        } 
         throughput *= bsdf_val;
 
         if (mat.roughness > 0.6 && mat.metallic < 0.2 && mat.transparency < 0.2) {
@@ -1997,7 +1987,7 @@ void RayGenMain() {
             color = color.x * wave_weight * 3.0 / (wave_weight.x + wave_weight.y + wave_weight.z); // consider pdf
         }
         if(prev_samples >= 1){ 
-            color = min(color, max(prev_color.xyz / prev_samples * 500, 250.0));
+            color = min(color, max(prev_color.xyz / prev_samples * 1000, 500.0));
         }
 
         accumulated_color[pixel_coords] = prev_color + float4(color, 1);
@@ -2040,12 +2030,12 @@ void MissMain(inout RayPayload payload) {
         payload.color = SampleTexture2D_Lod(render_setting.skybox_texture_id_, float2(u,v), lod).rgb;
     } else {
         float t = 0.5 * (normalize(WorldRayDirection()).y + 1.0);
-        payload.color = lerp(float3(0.0, 0.7, 0.8), float3(1.0, 0.75, 0.8), t * 1.3) * 1.0;
+        payload.color = lerp(float3(0.0, 0.7, 0.8), float3(1.0, 0.75, 0.8), t * 1.2) * 1.0;
     }
 }
 
 
-// ========================== Adaptive mipmap normal====================================
+// ========================== Adaptive mipmap ====================================
 
 float ComputeTextureLOD(Texture2D<float4> tex,
                         float dudx, float dudy, float dvdx, float dvdy)
@@ -2305,9 +2295,6 @@ void ClosestHitMain(inout RayPayload payload, in BuiltInTriangleIntersectionAttr
         payload.color = mat.base_color;
     }
 
-    // -------------------------------------------------
-    // Adaptive normal map mip LOD
-    // -------------------------------------------------
     float lod_normal = 0.0;
 
     if (payload.diffs.hasDifferentials && normal_id >= 0)

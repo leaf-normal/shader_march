@@ -502,7 +502,7 @@ void Application::OnInit() {
     hover_info_buffer_->UploadData(&initial_hover, sizeof(HoverInfo));
 
     // Initialize camera state
-    camera_pos_ = glm::vec3{ 0.0f, 1.0f, 3.5f };
+    camera_pos_ = glm::vec3{ 0.0f, 1.0f, 5.0f };
     camera_up_ = glm::vec3{ 0.0f, 1.0f, 0.0f };
     camera_speed_ = 0.1f;
 
@@ -694,10 +694,10 @@ void Application::OnUpdate() {
         settings.light_count = light_manager_->GetLightCount();
         settings.skybox_texture_id_ = skybox_texture_id_;
         settings.resolution = glm::vec2((float)window_->GetWidth(), (float)window_->GetHeight());
-        settings.global_medium_enabled = 1;
+        settings.global_medium_enabled = 0;
         settings.global_sigma_a=glm::vec3(0.030f);
         settings.global_sigma_s=glm::vec3(0.200f);
-        settings.global_Le=glm::vec3(0.2, 0.5, 0.8) * 0.025f;
+        settings.global_Le=glm::vec3(0.2, 0.5, 0.8) * 0.01f;
         
         render_settings_buffer_->UploadData(&settings, sizeof(RenderSettings));
 

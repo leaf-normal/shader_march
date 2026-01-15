@@ -243,72 +243,55 @@ void LightManager::CreateDefaultLights() {
     lights_.clear();
     light_entities_.clear();
         
-    // 点光源在右侧，z=0，对准缝隙
-    // Light dispersive_light = Light::CreateAreaLight(
-    //     glm::vec3(5.0f, 1.0f, 0.0f),      // 位置：x=3.0，y=1.0（墙体高度中心），z=0.0
-    //     glm::vec3(-1.0f, 0.0f, 0.0f),     // 法线：指向负X方向，正对缝隙
-    //     glm::vec3(0.0f, 1.0f, 0.0f),      // 切向量：沿Y轴向上，定义面光源的"长"方向
-    //     glm::vec2(2.0f, 0.2f),           // 尺寸：y方向2.0米（覆盖墙体高度），z方向0.05米（精确匹配缝隙宽度）
-    //     glm::vec3(1.0f),                  // 纯白色光谱
-    //     200.0f,                            // 强度（适当提高以补偿面光源的发光面积）
-    //     true                             // 可见
-    // );
-    // lights_.push_back(dispersive_light);
-
-    // // 创建一个可见的面光源作为示例
     // Light visible_area_light = Light::CreateAreaLight(
-    //     glm::vec3(3.0f, 3.55f, 0.5f),      // 位置
-    //     glm::vec3(0.0f, -1.0f, 0.0f),     // 法线方向（向下）
-    //     glm::vec3(1.0f, 0.0f, 0.0f),      // 切向量（指向X轴）
-    //     glm::vec2(2.0f, 0.4f),            // 尺寸
-    //     glm::vec3(1.0f, 0.8f, 0.6f),      // 暖白色
-    //     4.0f,                             // 强度
-    //     false                              // 可见
+    //     glm::vec3(0.0f, 10.0f, 0.0f),      
+    //     glm::vec3(0.0f, -1.0f, 0.0f),     
+    //     glm::vec3(1.0f, 0.0f, 0.0f),      
+    //     glm::vec2(5.0f, 5.0f),            
+    //     glm::vec3(1.0f, 0.8f, 0.6f),      
+    //     1.5f,                             
+    //     true                              
     // );
     // lights_.push_back(visible_area_light);
 
-    // // 创建一个可见的面光源作为示例
     // Light light_2 = Light::CreateAreaLight(
-    //     glm::vec3(-8.0f, 6.0f, 10.0f),      // 位置
-    //     glm::vec3(0.6f, -0.3, -1.0f),     // 法线方向（向下）
-    //     glm::vec3(1.0f, 0.0f, 0.0f),      // 切向量（指向X轴）
-    //     glm::vec2(5.0f, 5.0f),            // 尺寸
-    //     glm::vec3(0.9f, 0.8f, 0.6f),      // 暖白色
-    //     5.5f,                             // 强度
-    //     true                              // 可见
+    //     glm::vec3(-8.0f, 6.0f, 10.0f),    
+    //     glm::vec3(0.6f, -0.3, -1.0f),     
+    //     glm::vec3(1.0f, 0.0f, 0.0f),      
+    //     glm::vec2(5.0f, 5.0f),            
+    //     glm::vec3(0.9f, 0.8f, 0.6f),      
+    //     5.5f,                             
+    //     true                              
     // );
     // lights_.push_back(light_2);    
 
-    // //创建一个可见的球光源
     // Light visible_sphere_light = Light::CreateSphereLight(
-    //     glm::vec3(50.0f, 10.0f, 50.0f),     // 位置
-    //     0.25f,                             // 半径
-    //     glm::vec3(1.0f, 0.8f, 0.6f),      // 暖黄色
-    //     50000.0f,                             // 强度
-    //     true                              // 可见
+    //     glm::vec3(50.0f, 10.0f, 50.0f),    
+    //     0.25f,                             
+    //     glm::vec3(1.0f, 0.8f, 0.6f),      
+    //     50000.0f,                             
+    //     true                              
     // );
     // lights_.push_back(visible_sphere_light);
     
-    // 不可见的点光源
     // Light invisible_point = Light::CreatePointLight(
-    //     // glm::vec3(1.5f, 2.0f, -3.0f),      // 位置
-    //     glm::vec3(50.0f, 15.0f, 50.0f),      // 位置
-    //     glm::vec3(0.8f, 0.9f, 1.0f),      // 冷蓝色
-    //     9000.0f,                             // 强度
-    //     false                             // 不可见
+    //     // glm::vec3(1.5f, 2.0f, -3.0f),     
+    //     glm::vec3(50.0f, 15.0f, 50.0f),     
+    //     glm::vec3(0.8f, 0.9f, 1.0f),    
+    //     9000.0f,                            
+    //     false                            
     // );
     // lights_.push_back(invisible_point);
     
-    // // 不可见的聚光灯
     // Light invisible_spot = Light::CreateSpotLight(
-    //     // glm::vec3(5.0f, 5.0f, 3.0f),      // 位置
-    //     // glm::vec3(-0.5f, -1.0f, -0.5f),    // 方向
+    //     // glm::vec3(5.0f, 5.0f, 3.0f),      
+    //     // glm::vec3(-0.5f, -1.0f, -0.5f),    
     //     glm::vec3(2.0f, 2.00f, -4.0f),
     //     glm::vec3(0.0f, -0.065f, 1.0f),
-    //     glm::vec3(1.0f, 0.95f, 0.9f),     // 暖白色
-    //     150.0f,                             // 强度
-    //     8.0f,                            // 锥角
-    //     false                             // 不可见
+    //     glm::vec3(1.0f, 0.95f, 0.9f),    
+    //     150.0f,                             
+    //     8.0f,                            
+    //     false                             
     // );
     // lights_.push_back(invisible_spot);
     
